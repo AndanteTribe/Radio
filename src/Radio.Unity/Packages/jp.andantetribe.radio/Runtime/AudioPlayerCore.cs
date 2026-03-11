@@ -1,6 +1,7 @@
 ﻿#nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using AndanteTribe.Unity.Extensions;
 using Cysharp.Threading.Tasks;
@@ -20,6 +21,7 @@ namespace Radio
         private readonly AudioSource[] _allChannels;
         private readonly AssetsRegistry _bgmRegistry;
         private readonly bool _useVoice;
+        private readonly List<AudioSource> _excludeVolumeManagementChannels = new();
 
         private ReadOnlySpan<AudioSource> BgmChannels => _allChannels.AsSpan(_useVoice ? 2 : 1);
         private AudioSource SeChannel => _allChannels[0];
@@ -38,7 +40,7 @@ namespace Radio
         /// <param name="bgmChannelCount"></param>
         /// <param name="useVoice"></param>
         /// <param name="bgmRegistry"></param>
-        public AudioPlayerCore(GameObject root, int bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)
+        public AudioPlayerCore(GameObject root, uint bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)
         {
             _allChannels = root.GetComponents<AudioSource>();
             var existingChannels = _allChannels.AsSpan();
@@ -207,6 +209,13 @@ namespace Radio
             {
                 VoiceChannel.volume = _voiceVolume * _masterVolume;
             }
+            foreach (var channel in BgmChannels)
+            {
+                if (!_excludeVolumeManagementChannels.Contains(channel))
+                {
+                    channel.volume = _bgmVolume * _masterVolume;
+                }
+            }
         }
 
         /// <summary>
@@ -216,6 +225,13 @@ namespace Radio
         public void SetBgmVolume(float volume)
         {
             _bgmVolume = Mathf.Clamp01(volume);
+            foreach (var channel in BgmChannels)
+            {
+                if (!_excludeVolumeManagementChannels.Contains(channel))
+                {
+                    channel.volume = _bgmVolume * _masterVolume;
+                }
+            }
         }
 
         /// <summary>
