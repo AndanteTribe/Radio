@@ -19,12 +19,12 @@ namespace Radio
         /// Initialize a new instance of <see cref="AudioPlayerCore"/>.
         /// </summary>
         /// <param name="root"></param>
+        /// <param name="fadeDuration"></param>
         /// <param name="bgmChannelCount"></param>
         /// <param name="useVoice"></param>
         /// <param name="bgmRegistry"></param>
-        /// <param name="fadeDuration"></param>
-        public AudioPlayerCore(GameObject root, int bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null, TimeSpan fadeDuration = default)
-            :this (root, bgmChannelCount, useVoice, bgmRegistry)
+        public AudioPlayerCore(GameObject root, TimeSpan fadeDuration, uint bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)
+            : this (root, bgmChannelCount, useVoice, bgmRegistry)
         {
             FadeDuration = fadeDuration;
         }
@@ -64,6 +64,7 @@ namespace Radio
                 channel.loop = loop;
                 channel.volume = 0.0f;
                 channel.Play();
+                _excludeVolumeManagementChannels.Add(channel);
 
                 // Fade in from 0.0 to PI/2
                 await LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
@@ -81,6 +82,7 @@ namespace Radio
             nextChannel.volume = 0.0f;
             nextChannel.time = currentChannel.time;
             nextChannel.Play();
+            _excludeVolumeManagementChannels.Add(nextChannel);
 
             await LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
                 .Bind((self: this, cur: currentChannel, next: nextChannel), static (rate, args) =>
