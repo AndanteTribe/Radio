@@ -11,7 +11,7 @@ using UnityEngine.ResourceManagement.AsyncOperations;
 namespace Radio
 {
     /// <summary>
-    /// 汎用オーディオ再生実装.
+    /// General-purpose audio playback implementation.
     /// </summary>
     public partial class AudioPlayerCore : IDisposable
     {
@@ -67,7 +67,7 @@ namespace Radio
         }
 
         /// <summary>
-        /// BGMを非同期でロードして再生する.
+        /// Asynchronously loads and plays a BGM track.
         /// </summary>
         /// <param name="address"></param>
         /// <param name="loop"></param>
@@ -78,6 +78,12 @@ namespace Radio
             PlayBgmCore(clip, loop);
         }
 
+        /// <summary>
+        /// Asynchronously loads and plays a BGM track.
+        /// </summary>
+        /// <param name="reference"></param>
+        /// <param name="loop"></param>
+        /// <param name="cancellationToken"></param>
         public async UniTaskVoid PlayBgmAsync(AssetReferenceT<AudioClip> reference, bool loop = true, CancellationToken cancellationToken = default)
         {
             var clip = await _bgmRegistry.LoadAsync(reference, cancellationToken);
@@ -95,7 +101,7 @@ namespace Radio
         }
 
         /// <summary>
-        /// BGMを停止する.
+        /// Stops all currently playing BGM tracks.
         /// </summary>
         public void StopAllBgm()
         {
@@ -113,7 +119,7 @@ namespace Radio
         }
 
         /// <summary>
-        /// SEを非同期でロードして再生する.
+        /// Asynchronously loads and plays a sound effect.
         /// </summary>
         /// <param name="address"></param>
         /// <param name="cancellationToken"></param>
@@ -125,6 +131,11 @@ namespace Radio
             return PlayNonBgmCoreAsync(handle, channel, cancellationToken);
         }
 
+        /// <summary>
+        /// Asynchronously loads and plays a sound effect.
+        /// </summary>
+        /// <param name="reference"></param>
+        /// <param name="cancellationToken"></param>
         public UniTask PlaySeAsync(AssetReferenceT<AudioClip> reference, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -133,6 +144,11 @@ namespace Radio
             return PlayNonBgmCoreAsync(handle, channel, cancellationToken);
         }
 
+        /// <summary>
+        /// Asynchronously loads and plays a voice clip.
+        /// </summary>
+        /// <param name="address"></param>
+        /// <param name="cancellationToken"></param>
         public UniTask PlayVoiceAsync(string address, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -141,6 +157,11 @@ namespace Radio
             return PlayNonBgmCoreAsync(handle, channel, cancellationToken);
         }
 
+        /// <summary>
+        /// Asynchronously loads and plays a voice clip.
+        /// </summary>
+        /// <param name="reference"></param>
+        /// <param name="cancellationToken"></param>
         public UniTask PlayVoiceAsync(AssetReferenceT<AudioClip> reference, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -174,6 +195,10 @@ namespace Radio
             }
         }
 
+        /// <summary>
+        /// Sets the master volume affecting all audio channels.
+        /// </summary>
+        /// <param name="volume"></param>
         public void SetMasterVolume(float volume)
         {
             _masterVolume = Mathf.Clamp01(volume);
@@ -184,11 +209,19 @@ namespace Radio
             }
         }
 
+        /// <summary>
+        /// Sets the BGM volume.
+        /// </summary>
+        /// <param name="volume"></param>
         public void SetBgmVolume(float volume)
         {
             _bgmVolume = Mathf.Clamp01(volume);
         }
 
+        /// <summary>
+        /// Sets the sound effect volume.
+        /// </summary>
+        /// <param name="volume"></param>
         public void SetSeVolume(float volume)
         {
             var channel = SeChannel;
@@ -196,6 +229,10 @@ namespace Radio
             channel.volume = _seVolume * _masterVolume;
         }
 
+        /// <summary>
+        /// Sets the voice volume.
+        /// </summary>
+        /// <param name="volume"></param>
         public void SetVoiceVolume(float volume)
         {
             var channel = VoiceChannel;
