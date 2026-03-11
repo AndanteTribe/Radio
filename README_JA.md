@@ -2,6 +2,7 @@
 [![unity-meta-file-check](https://github.com/AndanteTribe/Radio/actions/workflows/unity-meta-file-check.yml/badge.svg)](https://github.com/AndanteTribe/Radio/actions/workflows/unity-meta-file-check.yml)
 [![Releases](https://img.shields.io/github/release/AndanteTribe/Radio.svg)](https://github.com/AndanteTribe/Radio/releases)
 [![GitHub license](https://img.shields.io/github/license/AndanteTribe/Radio.svg)](./LICENSE)
+[![openupm](https://img.shields.io/npm/v/jp.andantetribe.radio?label=openupm&registry_uri=https://package.openupm.com)](https://openupm.com/packages/jp.andantetribe.radio/)
 
 [English](README.md) | 日本語
 
@@ -30,6 +31,7 @@ https://github.com/AndanteTribe/Radio.git?path=src/Radio.Unity/Packages/jp.andan
 
 ```csharp
 using System.Threading;
+using Cysharp.Threading.Tasks;
 using Radio;
 using UnityEngine;
 
@@ -49,7 +51,7 @@ public class RadioSample : MonoBehaviour
         // destroyCancellationToken は Unity 2022.2 以降で利用可能な MonoBehaviour プロパティです
         _player.PlayBgmAsync("assets/audio/bgm/MainTheme.wav", loop: true, destroyCancellationToken).Forget();
 
-        // 効果音を再生（ファイア・アンド・フォーゲット）
+        // 効果音を再生（完了まで待機）
         await _player.PlaySeAsync("assets/audio/se/Click.wav", destroyCancellationToken);
     }
 
@@ -67,8 +69,8 @@ public class RadioSample : MonoBehaviour
 
 | コンストラクタ | 説明 |
 |--------------|------|
-| `AudioPlayerCore(GameObject root, int bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)` | `root` に `AudioSource` コンポーネントをアタッチしてプレイヤーを初期化します。`bgmChannelCount` で BGM チャンネル数を設定します。`useVoice` を `true` にするとボイス専用チャンネルが有効になります。 |
-| `AudioPlayerCore(GameObject root, int bgmChannelCount, bool useVoice, AssetsRegistry? bgmRegistry, TimeSpan fadeDuration)` | 上記と同様ですが、クロスフェードの `fadeDuration` パラメータが追加されています。*（`ENABLE_LITMOTION` が必要）* |
+| `AudioPlayerCore(GameObject root, uint bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)` | `root` に `AudioSource` コンポーネントをアタッチしてプレイヤーを初期化します。`bgmChannelCount` で BGM チャンネル数を設定します。`useVoice` を `true` にするとボイス専用チャンネルが有効になります。 |
+| `AudioPlayerCore(GameObject root, TimeSpan fadeDuration, uint bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)` | 上記と同様ですが、クロスフェードの `fadeDuration` パラメータが追加されています。*（`ENABLE_LITMOTION` が必要）* |
 
 ### メソッド
 

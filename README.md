@@ -2,6 +2,7 @@
 [![unity-meta-file-check](https://github.com/AndanteTribe/Radio/actions/workflows/unity-meta-file-check.yml/badge.svg)](https://github.com/AndanteTribe/Radio/actions/workflows/unity-meta-file-check.yml)
 [![Releases](https://img.shields.io/github/release/AndanteTribe/Radio.svg)](https://github.com/AndanteTribe/Radio/releases)
 [![GitHub license](https://img.shields.io/github/license/AndanteTribe/Radio.svg)](./LICENSE)
+[![openupm](https://img.shields.io/npm/v/jp.andantetribe.radio?label=openupm&registry_uri=https://package.openupm.com)](https://openupm.com/packages/jp.andantetribe.radio/)
 
 English | [日本語](README_JA.md)
 
@@ -30,6 +31,7 @@ https://github.com/AndanteTribe/Radio.git?path=src/Radio.Unity/Packages/jp.andan
 
 ```csharp
 using System.Threading;
+using Cysharp.Threading.Tasks;
 using Radio;
 using UnityEngine;
 
@@ -49,7 +51,7 @@ public class RadioSample : MonoBehaviour
         // destroyCancellationToken is a MonoBehaviour property available in Unity 2022.2+
         _player.PlayBgmAsync("assets/audio/bgm/MainTheme.wav", loop: true, destroyCancellationToken).Forget();
 
-        // Play a sound effect (fire-and-forget)
+        // Play a sound effect and wait for completion
         await _player.PlaySeAsync("assets/audio/se/Click.wav", destroyCancellationToken);
     }
 
@@ -67,8 +69,8 @@ public class RadioSample : MonoBehaviour
 
 | Constructor | Description |
 |-------------|-------------|
-| `AudioPlayerCore(GameObject root, int bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)` | Initializes the player, attaching `AudioSource` components to `root` as needed. `bgmChannelCount` sets the number of BGM channels. Set `useVoice` to `true` to enable a dedicated voice channel. |
-| `AudioPlayerCore(GameObject root, int bgmChannelCount, bool useVoice, AssetsRegistry? bgmRegistry, TimeSpan fadeDuration)` | Same as above, with an additional `fadeDuration` parameter for cross-fade transitions. *(Requires `ENABLE_LITMOTION`)* |
+| `AudioPlayerCore(GameObject root, uint bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)` | Initializes the player, attaching `AudioSource` components to `root` as needed. `bgmChannelCount` sets the number of BGM channels. Set `useVoice` to `true` to enable a dedicated voice channel. |
+| `AudioPlayerCore(GameObject root, TimeSpan fadeDuration, uint bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)` | Same as above, with an additional `fadeDuration` parameter for cross-fade transitions. *(Requires `ENABLE_LITMOTION`)* |
 
 ### Methods
 
