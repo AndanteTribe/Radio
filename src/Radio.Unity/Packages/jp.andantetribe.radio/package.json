@@ -1,0 +1,17 @@
+{
+  "name": "jp.andantetribe.radio",
+  "displayName": "Radio",
+  "author": {
+    "name": "AndanteTribe",
+    "url": "https://github.com/AndanteTribe"
+  },
+  "version": "0.1.0",
+  "unity": "2022.3",
+  "description": "Audio playback for BGM, sound effects, and interactive music for Unity.",
+  "license": "MIT",
+  "dependencies": {
+    "com.unity.addressables": "1.21.21",
+    "com.cysharp.unitask": "2.5.10",
+    "jp.andantetribe.assetsregistry": "1.0.4"
+  }
+}
