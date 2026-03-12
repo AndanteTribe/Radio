@@ -66,9 +66,9 @@ namespace Radio
                 channel.Play();
                 _excludeVolumeManagementChannels.Add(channel);
 
-                // Fade in from 0.0 to PI/2
                 try
                 {
+                    // Fade in from 0.0 to PI/2
                     await LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
                         .Bind((self: this, channel), static (rate, args) => args.self.ApplyBgmVolume(args.channel, Mathf.PI * 0.5f * rate))
                         .ToUniTask(cancellationToken);
