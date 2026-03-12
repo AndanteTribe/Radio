@@ -21,7 +21,7 @@ namespace Radio
         private readonly AudioSource[] _allChannels;
         private readonly AssetsRegistry _bgmRegistry;
         private readonly bool _useVoice;
-        private readonly Dictionary<AudioSource, int> _excludeVolumeManagementChannels = new();
+        private readonly List<AudioSource> _excludeVolumeManagementChannels = new();
 
         private ReadOnlySpan<AudioSource> BgmChannels => _allChannels.AsSpan(_useVoice ? 2 : 1);
         private AudioSource SeChannel => _allChannels[0];
@@ -211,7 +211,7 @@ namespace Radio
             }
             foreach (var channel in BgmChannels)
             {
-                if (!_excludeVolumeManagementChannels.ContainsKey(channel))
+                if (!_excludeVolumeManagementChannels.Contains(channel))
                 {
                     channel.volume = _bgmVolume * _masterVolume;
                 }
@@ -227,7 +227,7 @@ namespace Radio
             _bgmVolume = Mathf.Clamp01(volume);
             foreach (var channel in BgmChannels)
             {
-                if (!_excludeVolumeManagementChannels.ContainsKey(channel))
+                if (!_excludeVolumeManagementChannels.Contains(channel))
                 {
                     channel.volume = _bgmVolume * _masterVolume;
                 }
@@ -264,19 +264,5 @@ namespace Radio
 
         private AudioSource GetAvailableBgmChannel() =>
             BgmChannels[_currentBgmChannelIndex = (_currentBgmChannelIndex + 1) % BgmChannels.Length];
-
-        private void AddExcludeChannel(AudioSource channel)
-        {
-            _excludeVolumeManagementChannels.TryGetValue(channel, out var count);
-            _excludeVolumeManagementChannels[channel] = count + 1;
-        }
-
-        private void RemoveExcludeChannel(AudioSource channel)
-        {
-            if (_excludeVolumeManagementChannels.TryGetValue(channel, out var count) && count > 1)
-                _excludeVolumeManagementChannels[channel] = count - 1;
-            else
-                _excludeVolumeManagementChannels.Remove(channel);
-        }
     }
 }
