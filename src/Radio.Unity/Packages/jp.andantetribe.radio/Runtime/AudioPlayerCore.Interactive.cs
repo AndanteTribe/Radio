@@ -82,6 +82,7 @@ namespace Radio
             nextChannel.volume = 0.0f;
             nextChannel.time = currentChannel.time;
             nextChannel.Play();
+            _excludeVolumeManagementChannels.Add(currentChannel);
             _excludeVolumeManagementChannels.Add(nextChannel);
 
             await LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
