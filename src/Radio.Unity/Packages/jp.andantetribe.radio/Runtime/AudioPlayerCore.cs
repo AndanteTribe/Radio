@@ -107,6 +107,7 @@ namespace Radio
         /// </summary>
         public void StopAllBgm()
         {
+            CancelCrossFadeIfActive();
             foreach (var channel in BgmChannels)
             {
                 if (channel.isPlaying)
@@ -259,10 +260,13 @@ namespace Radio
         /// <inheritdoc />
         public void Dispose()
         {
+            CancelCrossFadeIfActive();
             _bgmRegistry.Dispose();
         }
 
         private AudioSource GetAvailableBgmChannel() =>
             BgmChannels[_currentBgmChannelIndex = (_currentBgmChannelIndex + 1) % BgmChannels.Length];
+
+        partial void CancelCrossFadeIfActive();
     }
 }

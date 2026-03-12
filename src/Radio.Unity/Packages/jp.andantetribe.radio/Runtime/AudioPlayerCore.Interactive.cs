@@ -15,6 +15,8 @@ namespace Radio
     {
         public readonly TimeSpan FadeDuration = TimeSpan.FromSeconds(3.0f);
 
+        private CancellationTokenSource? _crossFadeCts;
+
         /// <summary>
         /// Initialize a new instance of <see cref="AudioPlayerCore"/>.
         /// </summary>
@@ -53,8 +55,63 @@ namespace Radio
             await CrossFadeBgmCore(clip, loop, cancellationToken);
         }
 
+        // Cancels any in-progress crossfade Tween and cleans up its state so that a new
+        // crossfade can start cleanly.  After this returns:
+        //   • _crossFadeCts is null
+        //   • _excludeVolumeManagementChannels is empty
+        //   • every BGM channel that was being *faded out* has been stopped
+        //   • _currentBgmChannelIndex still points to the channel that was being *faded in*
+        //     (it becomes the starting point for the next crossfade)
+        private void InterruptCrossFade()
+        {
+            if (_crossFadeCts == null) return;
+
+            // Remove all exclusions so that volume management is immediately re-enabled.
+            _excludeVolumeManagementChannels.Clear();
+
+            // Stop every BGM channel except the one currently fading in.
+            // Those channels were being faded out and are no longer needed.
+            if (_currentBgmChannelIndex >= 0)
+            {
+                var bgmChannels = BgmChannels;
+                for (var i = 0; i < bgmChannels.Length; i++)
+                {
+                    if (i != _currentBgmChannelIndex)
+                    {
+                        bgmChannels[i].Stop();
+                        bgmChannels[i].clip = null;
+                    }
+                }
+            }
+
+            var oldCts = _crossFadeCts;
+            _crossFadeCts = null;
+            oldCts.Cancel();
+            oldCts.Dispose();
+        }
+
+        partial void CancelCrossFadeIfActive()
+        {
+            if (_crossFadeCts == null) return;
+
+            _excludeVolumeManagementChannels.Clear();
+
+            var oldCts = _crossFadeCts;
+            _crossFadeCts = null;
+            oldCts.Cancel();
+            oldCts.Dispose();
+        }
+
         private async UniTask CrossFadeBgmCore(AudioClip clip, bool loop, CancellationToken cancellationToken)
         {
+            // Cancel any in-progress crossfade so that at most one Tween is running at a time.
+            InterruptCrossFade();
+
+            // Create a linked CTS so the Tween can be cancelled either by the caller's token
+            // or by a subsequent CrossFadeBgmCore call (via InterruptCrossFade).
+            var myCts = _crossFadeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var linkedToken = myCts.Token;
+
             // If no track is currently playing, start with a fade-in
             if (_currentBgmChannelIndex == -1)
             {
@@ -71,11 +128,20 @@ namespace Radio
                     // Fade in from 0.0 to PI/2
                     await LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
                         .Bind((self: this, channel), static (rate, args) => args.self.ApplyBgmVolume(args.channel, Mathf.PI * 0.5f * rate))
-                        .ToUniTask(cancellationToken);
+                        .ToUniTask(linkedToken);
                 }
                 finally
                 {
-                    _excludeVolumeManagementChannels.Remove(channel);
+                    // Only clean up if this is still the active crossfade.
+                    // If InterruptCrossFade() was called, _crossFadeCts was replaced and we
+                    // must not touch state that the new crossfade already set up.
+                    if (ReferenceEquals(_crossFadeCts, myCts))
+                    {
+                        _excludeVolumeManagementChannels.Remove(channel);
+                        _crossFadeCts = null;
+                        myCts.Cancel();
+                        myCts.Dispose();
+                    }
                 }
 
                 return;
@@ -105,12 +171,19 @@ namespace Radio
                         self.ApplyBgmVolume(cur, Mathf.Cos(f));
                         self.ApplyBgmVolume(next, Mathf.Sin(f));
                     })
-                    .ToUniTask(cancellationToken);
+                    .ToUniTask(linkedToken);
             }
             finally
             {
-                _excludeVolumeManagementChannels.Remove(currentChannel);
-                _excludeVolumeManagementChannels.Remove(nextChannel);
+                // Only clean up if this is still the active crossfade (same reasoning as above).
+                if (ReferenceEquals(_crossFadeCts, myCts))
+                {
+                    _excludeVolumeManagementChannels.Remove(currentChannel);
+                    _excludeVolumeManagementChannels.Remove(nextChannel);
+                    _crossFadeCts = null;
+                    myCts.Cancel();
+                    myCts.Dispose();
+                }
             }
 
             currentChannel.Stop();
