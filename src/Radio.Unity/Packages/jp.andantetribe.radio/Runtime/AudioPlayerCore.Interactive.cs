@@ -66,10 +66,17 @@ namespace Radio
                 channel.Play();
                 _excludeVolumeManagementChannels.Add(channel);
 
-                // Fade in from 0.0 to PI/2
-                await LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
-                    .Bind((self: this, channel), static (rate, args) => args.self.ApplyBgmVolume(args.channel, Mathf.PI * 0.5f * rate))
-                    .ToUniTask(cancellationToken);
+                try
+                {
+                    // Fade in from 0.0 to PI/2
+                    await LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
+                        .Bind((self: this, channel), static (rate, args) => args.self.ApplyBgmVolume(args.channel, Mathf.PI * 0.5f * rate))
+                        .ToUniTask(cancellationToken);
+                }
+                finally
+                {
+                    _excludeVolumeManagementChannels.Remove(channel);
+                }
 
                 return;
             }
@@ -82,20 +89,29 @@ namespace Radio
             nextChannel.volume = 0.0f;
             nextChannel.time = currentChannel.time;
             nextChannel.Play();
+            _excludeVolumeManagementChannels.Add(currentChannel);
             _excludeVolumeManagementChannels.Add(nextChannel);
 
-            await LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
-                .Bind((self: this, cur: currentChannel, next: nextChannel), static (rate, args) =>
-                {
-                    // NOTE:
-                    // Using Sin/Cos curves for fading keeps the perceived volume constant throughout.
-                    // A linear fade would cause a momentary volume dip at the midpoint of the fade duration.
-                    var (self, cur, next) = args;
-                    var f = Mathf.PI * 0.5f * rate;
-                    self.ApplyBgmVolume(cur, Mathf.Cos(f));
-                    self.ApplyBgmVolume(next, Mathf.Sin(f));
-                })
-                .ToUniTask(cancellationToken);
+            try
+            {
+                await LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
+                    .Bind((self: this, cur: currentChannel, next: nextChannel), static (rate, args) =>
+                    {
+                        // NOTE:
+                        // Using Sin/Cos curves for fading keeps the perceived volume constant throughout.
+                        // A linear fade would cause a momentary volume dip at the midpoint of the fade duration.
+                        var (self, cur, next) = args;
+                        var f = Mathf.PI * 0.5f * rate;
+                        self.ApplyBgmVolume(cur, Mathf.Cos(f));
+                        self.ApplyBgmVolume(next, Mathf.Sin(f));
+                    })
+                    .ToUniTask(cancellationToken);
+            }
+            finally
+            {
+                _excludeVolumeManagementChannels.Remove(currentChannel);
+                _excludeVolumeManagementChannels.Remove(nextChannel);
+            }
 
             currentChannel.Stop();
             currentChannel.clip = null;
