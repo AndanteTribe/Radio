@@ -64,7 +64,7 @@ namespace Radio
                 channel.loop = loop;
                 channel.volume = 0.0f;
                 channel.Play();
-                _excludeVolumeManagementChannels.Add(channel);
+                AddExcludeChannel(channel);
 
                 try
                 {
@@ -75,7 +75,7 @@ namespace Radio
                 }
                 finally
                 {
-                    _excludeVolumeManagementChannels.Remove(channel);
+                    RemoveExcludeChannel(channel);
                 }
 
                 return;
@@ -89,8 +89,8 @@ namespace Radio
             nextChannel.volume = 0.0f;
             nextChannel.time = currentChannel.time;
             nextChannel.Play();
-            _excludeVolumeManagementChannels.Add(currentChannel);
-            _excludeVolumeManagementChannels.Add(nextChannel);
+            AddExcludeChannel(currentChannel);
+            AddExcludeChannel(nextChannel);
 
             try
             {
@@ -109,8 +109,8 @@ namespace Radio
             }
             finally
             {
-                _excludeVolumeManagementChannels.Remove(currentChannel);
-                _excludeVolumeManagementChannels.Remove(nextChannel);
+                RemoveExcludeChannel(currentChannel);
+                RemoveExcludeChannel(nextChannel);
             }
 
             currentChannel.Stop();
