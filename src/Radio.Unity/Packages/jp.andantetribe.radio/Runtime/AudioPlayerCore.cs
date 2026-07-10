@@ -21,7 +21,7 @@ namespace Radio
         private readonly AudioSource[] _allChannels;
         private readonly AssetsRegistry _bgmRegistry;
         private readonly bool _useVoice;
-        private readonly List<AudioSource> _excludeVolumeManagementChannels = new();
+        private readonly HashSet<AudioSource> _excludeVolumeManagementChannels = new();
 
         private ReadOnlySpan<AudioSource> BgmChannels => _allChannels.AsSpan(_useVoice ? 2 : 1);
         private AudioSource SeChannel => _allChannels[0];
