@@ -1,4 +1,4 @@
-﻿#if ENABLE_LITMOTION
+#if ENABLE_LITMOTION
 #nullable enable
 
 using System;
@@ -24,7 +24,7 @@ namespace Radio
         /// <param name="useVoice"></param>
         /// <param name="bgmRegistry"></param>
         public AudioPlayerCore(GameObject root, TimeSpan fadeDuration, uint bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)
-            : this (root, bgmChannelCount, useVoice, bgmRegistry)
+            : this(root, bgmChannelCount, useVoice, bgmRegistry)
         {
             FadeDuration = fadeDuration;
         }
