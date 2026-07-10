@@ -68,9 +68,9 @@ namespace Radio
 
                 try
                 {
-                    // Fade in from 0.0 to PI/2
+                    // Fade in with the same sine curve used by cross-fades.
                     await LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
-                        .Bind((self: this, channel), static (rate, args) => args.self.ApplyBgmVolume(args.channel, Mathf.PI * 0.5f * rate))
+                        .Bind((self: this, channel), static (rate, args) => args.self.ApplyBgmVolume(args.channel, Mathf.Sin(Mathf.PI * 0.5f * rate)))
                         .ToUniTask(cancellationToken);
                 }
                 finally
