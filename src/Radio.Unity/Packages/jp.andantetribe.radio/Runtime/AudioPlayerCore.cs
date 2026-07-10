@@ -22,12 +22,12 @@ namespace Radio
         private readonly AssetsRegistry _bgmRegistry;
         private readonly bool _useVoice;
         private readonly HashSet<AudioSource> _excludeVolumeManagementChannels = new();
+        private readonly AsyncReactiveProperty<int> _currentBgmChannelIndex = new(-1);
 
         private ReadOnlySpan<AudioSource> BgmChannels => _allChannels.AsSpan(_useVoice ? 2 : 1);
         private AudioSource SeChannel => _allChannels[0];
         private AudioSource VoiceChannel => _useVoice ? _allChannels[1] : throw new InvalidOperationException("Voice channel is not enabled.");
 
-        private int _currentBgmChannelIndex = -1;
         private float _masterVolume = DefaultVolume;
         private float _bgmVolume = DefaultVolume;
         private float _seVolume = DefaultVolume;
@@ -74,10 +74,10 @@ namespace Radio
         /// <param name="address"></param>
         /// <param name="loop"></param>
         /// <param name="cancellationToken"></param>
-        public async UniTaskVoid PlayBgmAsync(string address, bool loop = true, CancellationToken cancellationToken = default)
+        public async UniTask PlayBgmAsync(string address, bool loop = true, CancellationToken cancellationToken = default)
         {
             var clip = await _bgmRegistry.LoadAsync<AudioClip>(address, cancellationToken);
-            PlayBgmCore(clip, loop);
+            await PlayBgmCoreAsync(clip, loop, cancellationToken);
         }
 
         /// <summary>
@@ -86,13 +86,13 @@ namespace Radio
         /// <param name="reference"></param>
         /// <param name="loop"></param>
         /// <param name="cancellationToken"></param>
-        public async UniTaskVoid PlayBgmAsync(AssetReferenceT<AudioClip> reference, bool loop = true, CancellationToken cancellationToken = default)
+        public async UniTask PlayBgmAsync(AssetReferenceT<AudioClip> reference, bool loop = true, CancellationToken cancellationToken = default)
         {
             var clip = await _bgmRegistry.LoadAsync(reference, cancellationToken);
-            PlayBgmCore(clip, loop);
+            await PlayBgmCoreAsync(clip, loop, cancellationToken);
         }
 
-        private void PlayBgmCore(AudioClip clip, bool loop)
+        private async UniTask PlayBgmCoreAsync(AudioClip clip, bool loop, CancellationToken cancellationToken)
         {
             var channel = GetAvailableBgmChannel();
             channel.Stop();
@@ -100,6 +100,48 @@ namespace Radio
             channel.loop = loop;
             channel.volume = _bgmVolume * _masterVolume;
             channel.Play();
+
+            try
+            {
+                if (loop)
+                {
+                    await WaitUntilBgmChannelCyclesAsync(cancellationToken);
+                }
+                else
+                {
+                    using var linkedCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    try
+                    {
+                        await UniTask.WhenAny(
+                            UniTask.Delay(TimeSpan.FromSeconds(clip.length), cancellationToken: linkedCancellationTokenSource.Token).AsAsyncUnitUniTask(),
+                            WaitUntilBgmChannelCyclesAsync(linkedCancellationTokenSource.Token));
+                    }
+                    finally
+                    {
+                        linkedCancellationTokenSource.Cancel();
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                channel.Stop();
+                channel.clip = null;
+                channel.loop = false;
+                throw;
+            }
+
+            async UniTask<AsyncUnit> WaitUntilBgmChannelCyclesAsync(CancellationToken token)
+            {
+                for (var i = 0; i < BgmChannels.Length; i++)
+                {
+                    var chIndex = await _currentBgmChannelIndex.WaitAsync(token);
+                    if (chIndex < 0)
+                    {
+                        break;
+                    }
+                }
+                return AsyncUnit.Default;
+            }
         }
 
         /// <summary>
@@ -117,7 +159,7 @@ namespace Radio
                 }
             }
             _bgmRegistry.Clear();
-            _currentBgmChannelIndex = -1;
+            _currentBgmChannelIndex.Value = -1;
         }
 
         /// <summary>
@@ -263,6 +305,6 @@ namespace Radio
         }
 
         private AudioSource GetAvailableBgmChannel() =>
-            BgmChannels[_currentBgmChannelIndex = (_currentBgmChannelIndex + 1) % BgmChannels.Length];
+            BgmChannels[_currentBgmChannelIndex.Value = (_currentBgmChannelIndex.Value + 1) % BgmChannels.Length];
     }
 }
