@@ -504,6 +504,7 @@ namespace Radio.Tests
             Assert.That(secondCancelled, Is.True);
             Assert.That(channels[2].clip, Is.SameAs(_bgmShort));
             Assert.That(channels[2].loop, Is.True);
+            Assert.That(channels[2].time, Is.LessThan(_bgmShort.length));
             Assert.That(channels[2].volume, Is.EqualTo(1.0f).Within(0.02f));
             Assert.That(channels[3].clip, Is.Null);
             Assert.That(channels[3].isPlaying, Is.False);

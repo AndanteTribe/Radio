@@ -94,7 +94,7 @@ namespace Radio
             nextChannel.clip = clip;
             nextChannel.loop = loop;
             nextChannel.volume = 0.0f;
-            nextChannel.time = currentChannel.time;
+            nextChannel.time = Mathf.Repeat(currentChannel.time, clip.length);
             nextChannel.Play();
 
             var crossFadeHandle = LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
