@@ -59,7 +59,7 @@ namespace Radio
             CancelCrossFadeMotion();
 
             // If no track is currently playing, start with a fade-in
-            if (_currentBgmChannelIndex == -1)
+            if (_currentBgmChannelIndex.Value == -1)
             {
                 var channel = GetAvailableBgmChannel();
                 channel.Stop();
@@ -87,7 +87,7 @@ namespace Radio
                 return;
             }
 
-            var currentChannel = BgmChannels[_currentBgmChannelIndex];
+            var currentChannel = BgmChannels[_currentBgmChannelIndex.Value];
             var currentChannelRate = GetBgmVolumeRate(currentChannel);
             var nextChannel = GetAvailableBgmChannel();
             nextChannel.Stop();
