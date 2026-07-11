@@ -14,6 +14,7 @@ namespace Radio
     public partial class AudioPlayerCore
     {
         public readonly TimeSpan FadeDuration = TimeSpan.FromSeconds(3.0f);
+        private MotionHandle _crossFadeMotionHandle;
 
         /// <summary>
         /// Initialize a new instance of <see cref="AudioPlayerCore"/>.
@@ -55,6 +56,8 @@ namespace Radio
 
         private async UniTask CrossFadeBgmCore(AudioClip clip, bool loop, CancellationToken cancellationToken)
         {
+            CancelCrossFadeMotion();
+
             // If no track is currently playing, start with a fade-in
             if (_currentBgmChannelIndex == -1)
             {
@@ -64,24 +67,28 @@ namespace Radio
                 channel.loop = loop;
                 channel.volume = 0.0f;
                 channel.Play();
+
+                // Fade in with the same sine curve used by cross-fades.
+                var fadeInHandle = LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
+                    .Bind((self: this, channel), static (rate, args) => args.self.ApplyBgmVolume(args.channel, Mathf.Sin(Mathf.PI * 0.5f * rate)));
+                _crossFadeMotionHandle = fadeInHandle;
                 _excludeVolumeManagementChannels.Add(channel);
 
                 try
                 {
-                    // Fade in with the same sine curve used by cross-fades.
-                    await LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
-                        .Bind((self: this, channel), static (rate, args) => args.self.ApplyBgmVolume(args.channel, Mathf.Sin(Mathf.PI * 0.5f * rate)))
-                        .ToUniTask(cancellationToken);
+                    await fadeInHandle.ToUniTask(cancellationToken);
                 }
                 finally
                 {
                     _excludeVolumeManagementChannels.Remove(channel);
+                    ClearCrossFadeMotionHandleIfCurrent(fadeInHandle);
                 }
 
                 return;
             }
 
             var currentChannel = BgmChannels[_currentBgmChannelIndex];
+            var currentChannelRate = GetBgmVolumeRate(currentChannel);
             var nextChannel = GetAvailableBgmChannel();
             nextChannel.Stop();
             nextChannel.clip = clip;
@@ -89,32 +96,64 @@ namespace Radio
             nextChannel.volume = 0.0f;
             nextChannel.time = currentChannel.time;
             nextChannel.Play();
+
+            var crossFadeHandle = LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
+                .Bind((self: this, cur: currentChannel, next: nextChannel, curRate: currentChannelRate), static (rate, args) =>
+                {
+                    // NOTE:
+                    // Using Sin/Cos curves for fading keeps the perceived volume constant throughout.
+                    // A linear fade would cause a momentary volume dip at the midpoint of the fade duration.
+                    var (self, cur, next, curRate) = args;
+                    var f = Mathf.PI * 0.5f * rate;
+                    self.ApplyBgmVolume(cur, curRate * Mathf.Cos(f));
+                    self.ApplyBgmVolume(next, Mathf.Sin(f));
+                });
+            _crossFadeMotionHandle = crossFadeHandle;
             _excludeVolumeManagementChannels.Add(currentChannel);
             _excludeVolumeManagementChannels.Add(nextChannel);
 
             try
             {
-                await LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
-                    .Bind((self: this, cur: currentChannel, next: nextChannel), static (rate, args) =>
-                    {
-                        // NOTE:
-                        // Using Sin/Cos curves for fading keeps the perceived volume constant throughout.
-                        // A linear fade would cause a momentary volume dip at the midpoint of the fade duration.
-                        var (self, cur, next) = args;
-                        var f = Mathf.PI * 0.5f * rate;
-                        self.ApplyBgmVolume(cur, Mathf.Cos(f));
-                        self.ApplyBgmVolume(next, Mathf.Sin(f));
-                    })
-                    .ToUniTask(cancellationToken);
+                await crossFadeHandle.ToUniTask(cancellationToken);
             }
             finally
             {
                 _excludeVolumeManagementChannels.Remove(currentChannel);
                 _excludeVolumeManagementChannels.Remove(nextChannel);
+                ClearCrossFadeMotionHandleIfCurrent(crossFadeHandle);
             }
 
             currentChannel.Stop();
             currentChannel.clip = null;
+        }
+
+        private void CancelCrossFadeMotion()
+        {
+            if (!_crossFadeMotionHandle.IsActive())
+            {
+                return;
+            }
+
+            _crossFadeMotionHandle.Cancel();
+        }
+
+        private void ClearCrossFadeMotionHandleIfCurrent(MotionHandle handle)
+        {
+            if (_crossFadeMotionHandle == handle)
+            {
+                _crossFadeMotionHandle = MotionHandle.None;
+            }
+        }
+
+        private float GetBgmVolumeRate(AudioSource channel)
+        {
+            var managedVolume = _masterVolume * _bgmVolume;
+            if (managedVolume <= 0.0f)
+            {
+                return 0.0f;
+            }
+
+            return Mathf.Clamp01(channel.volume / managedVolume);
         }
 
         private void ApplyBgmVolume(AudioSource channel, float rate)
