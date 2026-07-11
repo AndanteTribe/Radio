@@ -151,12 +151,9 @@ namespace Radio
         {
             foreach (var channel in BgmChannels)
             {
-                if (channel.isPlaying)
-                {
-                    channel.Stop();
-                    channel.clip = null;
-                    channel.loop = false;
-                }
+                channel.Stop();
+                channel.clip = null;
+                channel.loop = false;
             }
             _bgmRegistry.Clear();
             _currentBgmChannelIndex.Value = -1;

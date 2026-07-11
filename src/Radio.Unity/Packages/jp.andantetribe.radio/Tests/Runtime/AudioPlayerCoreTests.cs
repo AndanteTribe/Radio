@@ -473,7 +473,7 @@ namespace Radio.Tests
             Assert.That(channels[2].clip, Is.Null);
             Assert.That(channels[3].clip, Is.SameAs(_bgmLoop));
             Assert.That(channels[3].loop, Is.False);
-            Assert.That(channels[3].time, Is.GreaterThan(0.0f));
+            Assert.That(channels[3].time, Is.GreaterThanOrEqualTo(0.0f).And.LessThan(_bgmLoop.length));
             Assert.That(channels[3].volume, Is.EqualTo(0.25f).Within(0.02f));
         });
 
