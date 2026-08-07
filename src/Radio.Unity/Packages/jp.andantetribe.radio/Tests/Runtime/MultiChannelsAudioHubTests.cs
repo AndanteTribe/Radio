@@ -41,7 +41,7 @@ namespace Radio.Tests
 
             var hub = new MultiChannelsAudioHub(channels, 0.3f, false);
 
-            Assert.That(hub.Loop, Is.False);
+            Assert.That(hub, Is.AssignableTo<ILoopableAudioHub<AudioClip>>());
             Assert.That(hub.AudioSources.Length, Is.EqualTo(2));
             Assert.That(hub.AudioSources[0], Is.SameAs(channels[0]));
             Assert.That(hub.AudioSources[1], Is.SameAs(channels[1]));
@@ -144,18 +144,20 @@ namespace Radio.Tests
         });
 
         [UnityTest]
-        public IEnumerator PlayAsyncUsesCurrentLoopProperty() => UniTask.ToCoroutine(async () =>
+        public IEnumerator ApplyLoopUpdatesChannelsAndIsUsedByFuturePlayback() => UniTask.ToCoroutine(async () =>
         {
-            var channel = CreateChannels(1)[0];
+            var channels = CreateChannels(2);
             var clip = CreateClip("Short", 0.01f);
-            var hub = new MultiChannelsAudioHub(new[] { channel }, loop: true)
-            {
-                Loop = false
-            };
+            var hub = new MultiChannelsAudioHub(channels, loop: true);
+
+            Assert.That(channels, Has.All.Matches<AudioSource>(channel => channel.loop));
+
+            hub.ApplyLoop(false);
 
             await hub.PlayAsync(clip, CancellationToken.None).Timeout(TimeSpan.FromSeconds(1));
 
-            Assert.That(channel.loop, Is.False);
+            Assert.That(channels, Has.All.Matches<AudioSource>(channel => !channel.loop));
+            Assert.That(channels[0].clip, Is.SameAs(clip));
         });
 
         [UnityTest]

@@ -53,7 +53,7 @@ namespace Radio.Tests
             var hub = Track(new InteractiveAudioHub(channels, volume: 0.25f, loop: false));
 
             Assert.That(hub.FadeDuration, Is.EqualTo(TimeSpan.FromSeconds(3.0f)));
-            Assert.That(hub.Loop, Is.False);
+            Assert.That(hub, Is.AssignableTo<ILoopableAudioHub<AudioClip>>());
             Assert.That(hub.AudioSources.Length, Is.EqualTo(2));
             Assert.That(hub.AudioSources[0], Is.SameAs(channels[0]));
             Assert.That(hub.AudioSources[1], Is.SameAs(channels[1]));
@@ -76,6 +76,21 @@ namespace Radio.Tests
 
             var hub = Track(new InteractiveAudioHub(channels, TimeSpan.FromSeconds(0.03f)));
             Assert.Throws<ArgumentOutOfRangeException>(() => hub.ApplyVolume(1.01f));
+        }
+
+        [Test]
+        public void ApplyLoopUpdatesEveryChannel()
+        {
+            var channels = CreateChannels(2);
+            var hub = Track(new InteractiveAudioHub(channels, TimeSpan.FromSeconds(0.03f), loop: false));
+
+            hub.ApplyLoop(true);
+
+            Assert.That(channels, Has.All.Matches<AudioSource>(channel => channel.loop));
+
+            hub.ApplyLoop(false);
+
+            Assert.That(channels, Has.All.Matches<AudioSource>(channel => !channel.loop));
         }
 
         [Test]
@@ -299,7 +314,7 @@ namespace Radio.Tests
             var secondClip = CreateClip("Cancel Cross B", 0.3f);
 
             await hub.PlayAsync(firstClip, CancellationToken.None).Timeout(s_testTimeout);
-            hub.Loop = true;
+            hub.ApplyLoop(true);
             using var cancellationTokenSource = new CancellationTokenSource();
             var task = hub.PlayAsync(secondClip, cancellationTokenSource.Token);
             await WaitUntilAsync(() => channels[1].volume > 0.1f);
@@ -331,7 +346,7 @@ namespace Radio.Tests
             Assert.That(firstCancelled, Is.True);
             Assert.That(channels, Has.All.Matches<AudioSource>(channel => channel.clip == null && !channel.loop));
 
-            hub.Loop = false;
+            hub.ApplyLoop(false);
             await hub.PlayAsync(nextClip, CancellationToken.None).Timeout(s_testTimeout);
 
             Assert.That(channels[0].clip, Is.SameAs(nextClip));

@@ -209,6 +209,24 @@ namespace Radio.Tests
         }
 
         [Test]
+        public void DisposeDisposesEveryDisposableRegisteredHub()
+        {
+            var bgm = new DisposableAudioHub();
+            var se = new DisposableAudioHub();
+            var nonDisposable = new RecordingAudioHub<AudioClip>();
+            var builder = new CompositeVolumeAudioHub<AudioClip, VolumeKind>.Builder();
+            builder.AddHub(VolumeKind.Bgm, bgm);
+            builder.AddHub(VolumeKind.Bgm, nonDisposable);
+            builder.AddHub(VolumeKind.Se, se);
+            var composite = builder.Build();
+
+            Assert.DoesNotThrow(composite.Dispose);
+
+            Assert.That(bgm.DisposeCount, Is.EqualTo(1));
+            Assert.That(se.DisposeCount, Is.EqualTo(1));
+        }
+
+        [Test]
         public void BuildWhenHubThrowsDoesNotConsumeBuilder()
         {
             var throwingHub = new ThrowingVolumeAudioHub();
@@ -233,6 +251,28 @@ namespace Radio.Tests
             }
 
             public void ApplyVolume(float value) => throw new InvalidOperationException();
+        }
+
+        private sealed class DisposableAudioHub : IAudioHub<AudioClip>, IDisposable
+        {
+            public int DisposeCount { get; private set; }
+
+            public ReadOnlySpan<AudioSource> AudioSources => ReadOnlySpan<AudioSource>.Empty;
+
+            public Cysharp.Threading.Tasks.UniTask PlayAsync(
+                AudioClip key,
+                System.Threading.CancellationToken cancellationToken) =>
+                Cysharp.Threading.Tasks.UniTask.CompletedTask;
+
+            public void StopAll()
+            {
+            }
+
+            public void ApplyVolume(float value)
+            {
+            }
+
+            public void Dispose() => DisposeCount++;
         }
     }
 }

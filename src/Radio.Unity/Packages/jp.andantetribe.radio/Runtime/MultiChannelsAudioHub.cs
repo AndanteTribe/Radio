@@ -8,20 +8,19 @@ using UnityEngine;
 
 namespace Radio
 {
-    public class MultiChannelsAudioHub : IAudioHub<AudioClip>
+    public class MultiChannelsAudioHub : ILoopableAudioHub<AudioClip>, IAudioHub<AudioClip>
     {
         private readonly ReadOnlyMemory<AudioSource> _channels;
         private readonly AsyncReactiveProperty<int> _currentChannelIndex = new(-1);
         private float _volume;
-
-        public bool Loop { get; set; }
+        private bool _loop;
 
         public ReadOnlySpan<AudioSource> AudioSources => _channels.Span;
 
         public MultiChannelsAudioHub(ReadOnlyMemory<AudioSource> channels, float volume = 0.5f, bool loop = true)
         {
             _channels = channels;
-            Loop = loop;
+            _loop = loop;
             ApplyVolume(volume);
 
             foreach (var channel in _channels.Span)
@@ -38,14 +37,14 @@ namespace Radio
             var channel = GetAvailableChannel();
             channel.Stop();
             channel.clip = key;
-            channel.loop = Loop;
+            channel.loop = _loop;
             channel.volume = _volume;
             channel.Play();
             AdvanceCurrentChannelIndex();
 
             try
             {
-                if (Loop)
+                if (_loop)
                 {
                     await WaitUntilChannelCyclesAsync(cancellationToken);
                 }
@@ -105,6 +104,15 @@ namespace Radio
                 channel.volume = value;
             }
             _volume = value;
+        }
+
+        public void ApplyLoop(bool value)
+        {
+            _loop = value;
+            foreach (var channel in _channels.Span)
+            {
+                channel.loop = value;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -1,10 +1,11 @@
 #nullable enable
 
+using System;
 using System.Collections.Generic;
 
 namespace Radio
 {
-    public sealed class CompositeVolumeAudioHub<TClip, TId> where TId : notnull
+    public sealed class CompositeVolumeAudioHub<TClip, TId> : IDisposable where TId : notnull
     {
         private readonly Dictionary<TId, Entry> _entries;
 
@@ -41,9 +42,24 @@ namespace Radio
 
         private void ApplyAllVolumes()
         {
-            foreach (var entry in _entries.Values)
+            foreach (var (_, entry) in _entries)
             {
                 entry.ApplyVolume(MasterVolume);
+            }
+        }
+
+        /// <inheritdoc />
+        public void Dispose()
+        {
+            foreach (var (_, entry) in _entries)
+            {
+                foreach (var hub in entry.Hubs)
+                {
+                    if (hub is IDisposable disposable)
+                    {
+                        disposable.Dispose();
+                    }
+                }
             }
         }
 

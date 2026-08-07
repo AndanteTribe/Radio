@@ -17,4 +17,9 @@ namespace Radio
 
         void ApplyVolume(float value);
     }
+
+    public interface ILoopableAudioHub<in T> : IAudioHub<T>
+    {
+        void ApplyLoop(bool value);
+    }
 }

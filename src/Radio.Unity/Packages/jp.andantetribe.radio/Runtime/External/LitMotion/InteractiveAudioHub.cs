@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace Radio
 {
-    public class InteractiveAudioHub : IAudioHub<AudioClip>
+    public class InteractiveAudioHub : ILoopableAudioHub<AudioClip>,  IAudioHub<AudioClip>
     {
         public readonly TimeSpan FadeDuration;
 
@@ -20,8 +20,7 @@ namespace Radio
         private readonly AsyncReactiveProperty<int> _currentChannelIndex = new(-1);
         private MotionHandle _crossFadeMotionHandle;
         private float _volume;
-
-        public bool Loop { get; set; }
+        private bool _loop;
 
         public ReadOnlySpan<AudioSource> AudioSources => _channels.Span;
 
@@ -30,7 +29,7 @@ namespace Radio
             _channels = channels;
             _excludeVolumeManagementChannels = new();
             FadeDuration = fadeDuration;
-            Loop = loop;
+            _loop = loop;
             ApplyVolume(volume);
 
             foreach (var channel in _channels.Span)
@@ -56,7 +55,7 @@ namespace Radio
                 var channel = GetAvailableChannel();
                 channel.Stop();
                 channel.clip = key;
-                channel.loop = Loop;
+                channel.loop = _loop;
                 channel.volume = 0.0f;
                 channel.time = 0.0f;
                 channel.Play();
@@ -81,7 +80,7 @@ namespace Radio
             var nextChannel = GetAvailableChannel();
             nextChannel.Stop();
             nextChannel.clip = key;
-            nextChannel.loop = Loop;
+            nextChannel.loop = _loop;
             nextChannel.volume = 0.0f;
             nextChannel.time = Mathf.Repeat(currentChannel.time, key.length);
             nextChannel.Play();
@@ -110,7 +109,7 @@ namespace Radio
         {
             try
             {
-                if (Loop)
+                if (_loop)
                 {
                     await WaitUntilChannelCyclesAsync(cancellationToken);
                 }
@@ -217,6 +216,15 @@ namespace Radio
                 }
             }
             _volume = value;
+        }
+
+        public void ApplyLoop(bool value)
+        {
+            _loop = value;
+            foreach (var channel in _channels.Span)
+            {
+                channel.loop = value;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
