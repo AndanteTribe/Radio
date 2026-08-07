@@ -7,89 +7,168 @@
 English | [日本語](README_JA.md)
 
 ## Overview
-**Radio** is a Unity audio playback library for BGM, sound effects, and interactive music.
 
-It provides `AudioPlayerCore`, which manages multiple `AudioSource` channels (SE, Voice, BGM) and integrates with Unity's Addressables system for asset loading. All BGM handles are cached via [AssetsRegistry](https://github.com/AndanteTribe/AssetsRegistry) and released automatically on `Dispose`.
+**Radio** is a small set of composable Unity audio playback components. Each `AudioHub` has one responsibility, so applications can combine only the behavior they need:
 
-Optionally, when [LitMotion](https://github.com/AnnulusGames/LitMotion) is available (i.e., the `ENABLE_LITMOTION` scripting define symbol is set), cross-fade BGM transitions are also supported.
+| Component | Responsibility |
+|---|---|
+| `SingleChannelAudioHub` | Plays overlapping one-shot clips through one `AudioSource`. |
+| `MultiChannelsAudioHub` | Rotates playback across multiple `AudioSource` channels. |
+| `InteractiveAudioHub` | Adds fade-in, cross-fade, and playback-position synchronization with LitMotion. |
+| `AddressableAudioHub` | Loads an `AudioClip` for each request and releases its Addressables handle after playback. |
+| `CachedAddressableAudioHub` | Retains successful Addressables acquisitions until `Dispose`. |
+| `CompositeVolumeAudioHub<TClip, TId>` | Applies a master volume and per-ID volumes to groups of hubs. |
+
+The playback hubs implement `IAudioHub<T>`. Addressables hubs wrap an `IAudioHub<AudioClip>` and change its input to an address or `AssetReferenceT<AudioClip>`. `CompositeVolumeAudioHub` coordinates volume only and does not itself implement `IAudioHub<T>`.
+
+Radio does not create or discover `AudioSource` components. The application owns the sources and passes them to the appropriate hub.
 
 ## Requirements
+
 - Unity 2022.3 or later
-- [Addressables](https://docs.unity3d.com/Manual/com.unity.addressables.html) 1.21.21 or later
 - [UniTask](https://github.com/Cysharp/UniTask) 2.5.10 or later
-- [AssetsRegistry](https://github.com/AndanteTribe/AssetsRegistry) 1.0.4 or later
-- *(Optional)* [LitMotion](https://github.com/AnnulusGames/LitMotion) — required for cross-fade BGM support (enable with `ENABLE_LITMOTION` scripting define symbol)
+- *(Optional)* [Addressables](https://docs.unity3d.com/Manual/com.unity.addressables.html) 1.21.21 or later for `AddressableAudioHub` and `CachedAddressableAudioHub`
+- *(Optional)* [LitMotion](https://github.com/AnnulusGames/LitMotion) for `InteractiveAudioHub`
+
+Addressables and LitMotion are not declared as package dependencies. When either package is installed, the package assembly enables the corresponding hubs through its Version Defines.
 
 ## Installation
-Open `Window > Package Manager`, select `[+] > Add package from git URL`, and enter the following URL:
 
-```
+Open `Window > Package Manager`, select `[+] > Add package from git URL`, and enter:
+
+```text
 https://github.com/AndanteTribe/Radio.git?path=src/Radio.Unity/Packages/jp.andantetribe.radio
 ```
 
 ## Quick Start
 
+The following `AudioManager` is a typical setup: one looping BGM source, one overlapping one-shot source for sound effects, and shared master/category volume controls. Assign both `AudioSource` fields in the Inspector.
+
 ```csharp
-using System.Threading;
 using Cysharp.Threading.Tasks;
 using Radio;
 using UnityEngine;
 
-public class RadioSample : MonoBehaviour
+public sealed class AudioManager : MonoBehaviour
 {
-    private AudioPlayerCore _player;
+    private enum AudioGroup
+    {
+        Bgm,
+        Se,
+    }
+
+    [SerializeField] private AudioSource bgmSource = null!;
+    [SerializeField] private AudioSource seSource = null!;
+
+    private MultiChannelsAudioHub bgm = null!;
+    private SingleChannelAudioHub se = null!;
+    private CompositeVolumeAudioHub<AudioClip, AudioGroup> volumes = null!;
 
     private void Awake()
     {
-        // Creates SE channel + 3 BGM channels on this GameObject
-        _player = new AudioPlayerCore(gameObject);
+        bgm = new MultiChannelsAudioHub(new[] { bgmSource }, volume: 1.0f, loop: true);
+        se = new SingleChannelAudioHub(seSource, volume: 1.0f);
+
+        var builder =
+            new CompositeVolumeAudioHub<AudioClip, AudioGroup>.Builder(masterVolume: 1.0f);
+        builder.AddHub(AudioGroup.Bgm, bgm);
+        builder.AddHub(AudioGroup.Se, se);
+        builder.SetVolume(AudioGroup.Bgm, 1.0f);
+        builder.SetVolume(AudioGroup.Se, 1.0f);
+        volumes = builder.Build();
     }
 
-    private async void Start()
+    public void PlayBgm(AudioClip clip)
     {
-        // Play BGM (loops by default)
-        // destroyCancellationToken is a MonoBehaviour property available in Unity 2022.2+
-        _player.PlayBgmAsync("assets/audio/bgm/MainTheme.wav", loop: true, destroyCancellationToken).Forget();
-
-        // Play a sound effect and wait for completion
-        await _player.PlaySeAsync("assets/audio/se/Click.wav", destroyCancellationToken);
+        bgm.StopAll();
+        bgm.PlayAsync(clip, destroyCancellationToken).Forget();
     }
 
-    private void OnDestroy()
+    public void PlaySe(AudioClip clip) =>
+        se.PlayAsync(clip, destroyCancellationToken).Forget();
+
+    public void StopBgm() => bgm.StopAll();
+
+    public void StopAll()
     {
-        // Releases all cached BGM handles
-        _player.Dispose();
+        bgm.StopAll();
+        se.StopAll();
     }
+
+    public void SetBgmLoop(bool value) => bgm.ApplyLoop(value);
+
+    public void SetMasterVolume(float value) => volumes.ApplyMasterVolume(value);
+
+    public void SetBgmVolume(float value) => volumes.ApplyVolume(AudioGroup.Bgm, value);
+
+    public void SetSeVolume(float value) => volumes.ApplyVolume(AudioGroup.Se, value);
+
+    private void OnDestroy() => volumes.Dispose();
 }
 ```
 
-## API
+All volume arguments must be greater than `0` and less than or equal to `1`. Invalid values throw `ArgumentOutOfRangeException`.
 
-### Constructor
+## Playback Hubs
 
-| Constructor | Description |
-|-------------|-------------|
-| `AudioPlayerCore(GameObject root, uint bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)` | Initializes the player, attaching `AudioSource` components to `root` as needed. `bgmChannelCount` sets the number of BGM channels. Set `useVoice` to `true` to enable a dedicated voice channel. |
-| `AudioPlayerCore(GameObject root, TimeSpan fadeDuration, uint bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)` | Same as above, with an additional `fadeDuration` parameter for cross-fade transitions. *(Requires `ENABLE_LITMOTION`)* |
+### Common interfaces
 
-### Methods
+| API | Description |
+|---|---|
+| `IAudioHub<T>` | Common playback contract for a key of type `T`. |
+| `IAudioHub<T>.AudioSources` | Returns the `AudioSource` instances managed by the hub without allocating an array. |
+| `IAudioHub<T>.PlayAsync(T, CancellationToken)` | Starts playback and returns a task representing that implementation's playback lifetime. |
+| `IAudioHub<T>.StopAll()` | Stops every source managed by the hub. |
+| `IAudioHub<T>.ApplyVolume(float)` | Applies the hub's effective volume. Values must be greater than `0` and less than or equal to `1`. |
+| `ILoopableAudioHub<T>` | Extends `IAudioHub<T>` with loop control. |
+| `ILoopableAudioHub<T>.ApplyLoop(bool)` | Applies the loop setting to all managed sources and subsequent playback. |
 
-| Method | Description |
-|--------|-------------|
-| `PlayBgmAsync(string address, bool loop, CancellationToken cancellationToken)` | Loads and plays a BGM clip from the given Addressables address. Loops by default. |
-| `PlayBgmAsync(AssetReferenceT<AudioClip> reference, bool loop, CancellationToken cancellationToken)` | Loads and plays a BGM clip from an `AssetReferenceT<AudioClip>`. Loops by default. |
-| `StopAllBgm()` | Stops all playing BGM channels and releases cached handles. |
-| `PlaySeAsync(string address, CancellationToken cancellationToken)` | Loads and plays a sound effect, then releases the handle when playback finishes. |
-| `PlaySeAsync(AssetReferenceT<AudioClip> reference, CancellationToken cancellationToken)` | Loads and plays a sound effect from an `AssetReferenceT<AudioClip>`. |
-| `PlayVoiceAsync(string address, CancellationToken cancellationToken)` | Loads and plays a voice clip. *(Requires `useVoice: true` in constructor)* |
-| `PlayVoiceAsync(AssetReferenceT<AudioClip> reference, CancellationToken cancellationToken)` | Loads and plays a voice clip from an `AssetReferenceT<AudioClip>`. *(Requires `useVoice: true` in constructor)* |
-| `CrossFadeBgmAsync(string address, bool loop, CancellationToken cancellationToken)` | Performs a cross-fade transition to a new BGM track. *(Requires `ENABLE_LITMOTION`)* |
-| `CrossFadeBgmAsync(AssetReferenceT<AudioClip> reference, bool loop, CancellationToken cancellationToken)` | Cross-fades to a new BGM track from an `AssetReferenceT<AudioClip>`. *(Requires `ENABLE_LITMOTION`)* |
-| `SetMasterVolume(float volume)` | Sets the master volume (0–1) applied to all channels. |
-| `SetBgmVolume(float volume)` | Sets the BGM volume (0–1). |
-| `SetSeVolume(float volume)` | Sets the sound effect volume (0–1). |
-| `SetVoiceVolume(float volume)` | Sets the voice volume (0–1). *(Requires `useVoice: true` in constructor)* |
-| `Dispose()` | Releases all cached BGM asset handles. |
+### Implementations
+
+| Type | Construction and input | Behavior |
+|---|---|---|
+| `SingleChannelAudioHub` | `SingleChannelAudioHub(AudioSource, float)`<br>Input: `AudioClip` | Uses `AudioSource.PlayOneShot`, allowing clips to overlap. `PlayAsync` waits for the clip duration; cancellation stops the wait but not an already-started one-shot. Volume changes affect subsequent one-shots. |
+| `MultiChannelsAudioHub` | `MultiChannelsAudioHub(ReadOnlyMemory<AudioSource>, float, bool)`<br>Input: `AudioClip` | Uses `AudioSource.Play` and rotates through the supplied channels. Looping calls wait for channel reuse, `StopAll`, or cancellation; non-looping calls can also complete when the clip duration elapses. Implements `ILoopableAudioHub<AudioClip>`. |
+| `InteractiveAudioHub` | `InteractiveAudioHub(ReadOnlyMemory<AudioSource>, TimeSpan, float, bool)` or the overload with a three-second fade<br>Input: `AudioClip` | Adds fade-in, sine/cosine cross-fades, and playback-position synchronization. `PlayAsync` waits for both the transition and channel lifetime. `FadeDuration` exposes the transition duration. Implements `ILoopableAudioHub<AudioClip>` and is available only with LitMotion. |
+
+Supply at least one non-null source to `MultiChannelsAudioHub`, and at least two for normal cross-fading with `InteractiveAudioHub`. `PlayAsync` represents the playback lifetime, not merely the moment playback starts; a looping task can remain pending until its channel is reused, stopped, or cancelled.
+
+## Addressables Wrappers
+
+Both wrappers implement `IAudioHub<string>` and `IAudioHub<AssetReferenceT<AudioClip>>` and delegate `AudioSources`, `StopAll`, and `ApplyVolume` to the wrapped clip hub.
+
+| Type | Construction and input | Handle lifetime |
+|---|---|---|
+| `AddressableAudioHub` | `AddressableAudioHub(IAudioHub<AudioClip>)`<br>Input: `string` or `AssetReferenceT<AudioClip>` | Loads on every request, delegates playback to the wrapped hub, and releases the handle when playback completes, fails, or is cancelled. Available only with Addressables. |
+| `CachedAddressableAudioHub` | `CachedAddressableAudioHub(IAudioHub<AudioClip>)`<br>Input: `string` or `AssetReferenceT<AudioClip>` | Retains every successful Addressables acquisition and releases the corresponding reference counts in `Dispose`. `StopAll` stops playback without releasing cached handles. Available only with Addressables. |
+
+`CachedAddressableAudioHub.Dispose` is not synchronized with in-flight operations. Cancel and observe outstanding `PlayAsync` calls before disposing it, and do not start new requests afterwards.
+
+## Composite Volume
+
+`CompositeVolumeAudioHub<TClip, TId>` groups one or more `IAudioHub<TClip>` instances under each ID. The effective value applied to every hub in a group is:
+
+```text
+master volume × group volume
+```
+
+Master and group volumes default to `0.5`.
+
+| API | Description |
+|---|---|
+| `CompositeVolumeAudioHub<TClip, TId>.MasterVolume` | Gets the current master volume. |
+| `CompositeVolumeAudioHub<TClip, TId>.Count` | Gets the number of registered groups. |
+| `GetVolume(TId)` | Gets a group's volume before master-volume multiplication. |
+| `GetHubs(TId)` | Gets the hubs registered in a group. |
+| `ApplyMasterVolume(float)` | Changes the master volume and reapplies every group. |
+| `ApplyVolume(TId, float)` | Changes one group volume and reapplies that group. |
+| `Dispose()` | Disposes every registered hub that implements `IDisposable`. |
+| `Builder(IEqualityComparer<TId>?, float)` | Creates a builder with an optional ID comparer and master volume. The default struct is also valid. |
+| `Builder.AddHub(TId, IAudioHub<TClip>)` | Registers a hub. Multiple hubs can share one ID. |
+| `Builder.SetVolume(TId, float)` | Sets a registered group's volume; an unknown ID throws `KeyNotFoundException`. |
+| `Builder.SetMasterVolume(float)` | Sets the master volume used by `Build`. |
+| `Builder.Build()` | Builds the composite and resets the builder's registrations. |
 
 ## License
+
 This library is released under the MIT license.
