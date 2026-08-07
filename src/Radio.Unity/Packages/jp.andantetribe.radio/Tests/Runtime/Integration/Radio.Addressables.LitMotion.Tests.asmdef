@@ -1,0 +1,56 @@
+{
+    "name": "Radio.Addressables.LitMotion.Tests",
+    "rootNamespace": "Radio.Tests",
+    "references": [
+        "Radio",
+        "Radio.Addressables",
+        "Radio.LitMotion",
+        "Radio.Addressables.Tests",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "Unity.Addressables",
+        "Unity.ResourceManager",
+        "UniTask",
+        "UniTask.Addressables",
+        "AssetsRegistry",
+        "LitMotion"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS",
+        "RADIO_HAS_TEST_FRAMEWORK",
+        "RADIO_HAS_ADDRESSABLES",
+        "RADIO_HAS_ASSETS_REGISTRY",
+        "ENABLE_LITMOTION"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.test-framework",
+            "expression": "1.1.33",
+            "define": "RADIO_HAS_TEST_FRAMEWORK"
+        },
+        {
+            "name": "com.unity.addressables",
+            "expression": "1.21.21",
+            "define": "RADIO_HAS_ADDRESSABLES"
+        },
+        {
+            "name": "jp.andantetribe.assetsregistry",
+            "expression": "1.0.4",
+            "define": "RADIO_HAS_ASSETS_REGISTRY"
+        },
+        {
+            "name": "com.annulusgames.lit-motion",
+            "expression": "",
+            "define": "ENABLE_LITMOTION"
+        }
+    ],
+    "noEngineReferences": false
+}

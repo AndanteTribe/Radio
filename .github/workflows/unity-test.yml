@@ -47,7 +47,7 @@ jobs:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           unityVersion: auto
           testMode: playMode
-          coverageOptions: 'generateHtmlReport;generateAdditionalReports;assemblyFilters:+Radio'
+          coverageOptions: 'generateHtmlReport;generateAdditionalReports;assemblyFilters:+Radio,+Radio.Addressables,+Radio.LitMotion'
       # ghasec-ignore: unpinned-action
       - uses: AndanteTribe/Actions/actions/upload-artifact@main # zizmor: ignore[unpinned-uses] repository-local action reference is intentionally tracked on @main
         if: always()

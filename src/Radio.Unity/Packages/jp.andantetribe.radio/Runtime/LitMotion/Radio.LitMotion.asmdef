@@ -1,0 +1,26 @@
+{
+    "name": "Radio.LitMotion",
+    "rootNamespace": "Radio",
+    "references": [
+        "Radio",
+        "GUID:f51ebe6a0ceec4240a699833d6309b23",
+        "GUID:3b570a5146f9d4f0fa107ed4559471a3"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "ENABLE_LITMOTION"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.annulusgames.lit-motion",
+            "expression": "",
+            "define": "ENABLE_LITMOTION"
+        }
+    ],
+    "noEngineReferences": false
+}

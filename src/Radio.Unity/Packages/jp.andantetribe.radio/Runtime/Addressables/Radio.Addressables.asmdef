@@ -1,0 +1,35 @@
+{
+    "name": "Radio.Addressables",
+    "rootNamespace": "Radio",
+    "references": [
+        "Radio",
+        "GUID:9e24947de15b9834991c9d8411ea37cf",
+        "GUID:84651a3751eca9349aac36a66bba901b",
+        "GUID:f51ebe6a0ceec4240a699833d6309b23",
+        "GUID:593a5b492d29ac6448b1ebf7f035ef33",
+        "GUID:9db760560308cb74f9a9007ba0d270fb"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "RADIO_HAS_ADDRESSABLES",
+        "RADIO_HAS_ASSETS_REGISTRY"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.addressables",
+            "expression": "1.21.21",
+            "define": "RADIO_HAS_ADDRESSABLES"
+        },
+        {
+            "name": "jp.andantetribe.assetsregistry",
+            "expression": "1.0.4",
+            "define": "RADIO_HAS_ASSETS_REGISTRY"
+        }
+    ],
+    "noEngineReferences": false
+}

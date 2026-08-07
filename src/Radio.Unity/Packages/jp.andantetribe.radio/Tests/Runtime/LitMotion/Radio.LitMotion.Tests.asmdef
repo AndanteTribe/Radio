@@ -1,11 +1,13 @@
 {
-    "name": "Radio.Tests",
+    "name": "Radio.LitMotion.Tests",
     "rootNamespace": "Radio.Tests",
     "references": [
         "Radio",
+        "Radio.LitMotion",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
-        "UniTask"
+        "UniTask",
+        "LitMotion"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
@@ -17,13 +19,19 @@
     "autoReferenced": false,
     "defineConstraints": [
         "UNITY_INCLUDE_TESTS",
-        "RADIO_HAS_TEST_FRAMEWORK"
+        "RADIO_HAS_TEST_FRAMEWORK",
+        "ENABLE_LITMOTION"
     ],
     "versionDefines": [
         {
             "name": "com.unity.test-framework",
             "expression": "1.1.33",
             "define": "RADIO_HAS_TEST_FRAMEWORK"
+        },
+        {
+            "name": "com.annulusgames.lit-motion",
+            "expression": "",
+            "define": "ENABLE_LITMOTION"
         }
     ],
     "noEngineReferences": false

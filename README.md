@@ -1,4 +1,5 @@
 # Radio
+
 [![unity-meta-file-check](https://github.com/AndanteTribe/Radio/actions/workflows/unity-meta-file-check.yml/badge.svg)](https://github.com/AndanteTribe/Radio/actions/workflows/unity-meta-file-check.yml)
 [![Releases](https://img.shields.io/github/release/AndanteTribe/Radio.svg)](https://github.com/AndanteTribe/Radio/releases)
 [![GitHub license](https://img.shields.io/github/license/AndanteTribe/Radio.svg)](./LICENSE)
@@ -7,57 +8,93 @@
 English | [日本語](README_JA.md)
 
 ## Overview
-**Radio** is a Unity audio playback library for BGM, sound effects, and interactive music.
 
-It provides `AudioPlayerCore`, which manages multiple `AudioSource` channels (SE, Voice, BGM) and integrates with Unity's Addressables system for asset loading. All BGM handles are cached via [AssetsRegistry](https://github.com/AndanteTribe/AssetsRegistry) and released automatically on `Dispose`.
+**Radio** is a Unity audio playback library for BGM, sound effects, and voice.
 
-Optionally, when [LitMotion](https://github.com/AnnulusGames/LitMotion) is available (i.e., the `ENABLE_LITMOTION` scripting define symbol is set), cross-fade BGM transitions are also supported.
+`AudioPlayer` manages multiple `AudioSource` channels and plays `AudioClip` instances directly. Use `AddressableAudioPlayer` only when Addressables playback is needed. Its BGM handles are retained through [AssetsRegistry](https://github.com/AndanteTribe/AssetsRegistry) and released by `StopAllBgm` or `Dispose`.
+
+Optionally, when [LitMotion](https://github.com/AnnulusGames/LitMotion) is available, BGM transitions can be enabled through `UseLitMotionCrossFade`. Package detection defines `ENABLE_LITMOTION` automatically; without LitMotion, the related source and assembly are excluded from compilation. Custom transitions that do not use LitMotion can implement `IBgmTransition`.
 
 ## Requirements
+
 - Unity 2022.3 or later
-- [Addressables](https://docs.unity3d.com/Manual/com.unity.addressables.html) 1.21.21 or later
 - [UniTask](https://github.com/Cysharp/UniTask) 2.5.10 or later
-- [AssetsRegistry](https://github.com/AndanteTribe/AssetsRegistry) 1.0.4 or later
-- *(Optional)* [LitMotion](https://github.com/AnnulusGames/LitMotion) — required for cross-fade BGM support (enable with `ENABLE_LITMOTION` scripting define symbol)
+- *(Optional)* [Addressables](https://docs.unity3d.com/Manual/com.unity.addressables.html) 1.21.21 or later and [AssetsRegistry](https://github.com/AndanteTribe/AssetsRegistry) 1.0.4 or later — required for Addressables playback
+- *(Optional)* [LitMotion](https://github.com/AnnulusGames/LitMotion) — required for LitMotion cross-fades
 
 ## Installation
+
 Open `Window > Package Manager`, select `[+] > Add package from git URL`, and enter the following URL:
 
 ```
 https://github.com/AndanteTribe/Radio.git?path=src/Radio.Unity/Packages/jp.andantetribe.radio
 ```
 
+Install the optional packages above only when using Addressables playback or LitMotion cross-fades. No scripting define symbol needs to be set manually.
+
 ## Quick Start
 
 ```csharp
-using System.Threading;
 using Cysharp.Threading.Tasks;
 using Radio;
 using UnityEngine;
 
 public class RadioSample : MonoBehaviour
 {
-    private AudioPlayerCore _player;
+    [SerializeField] private AudioClip _bgmClip;
+    [SerializeField] private AudioClip _seClip;
+
+    private AudioPlayer _player;
 
     private void Awake()
     {
-        // Creates SE channel + 3 BGM channels on this GameObject
-        _player = new AudioPlayerCore(gameObject);
+        // Creates an SE channel + 3 BGM channels on this GameObject
+        _player = new AudioPlayer(gameObject);
     }
 
     private async void Start()
     {
         // Play BGM (loops by default)
         // destroyCancellationToken is a MonoBehaviour property available in Unity 2022.2+
-        _player.PlayBgmAsync("assets/audio/bgm/MainTheme.wav", loop: true, destroyCancellationToken).Forget();
+        _player.PlayBgmAsync(_bgmClip, loop: true, destroyCancellationToken).Forget();
 
         // Play a sound effect and wait for completion
-        await _player.PlaySeAsync("assets/audio/se/Click.wav", destroyCancellationToken);
+        await _player.PlaySeAsync(_seClip, destroyCancellationToken);
+    }
+}
+```
+
+`AudioPlayer` owns no external asset handles and does not require `Dispose`. For Addressables playback, create an `AddressableAudioPlayer` and call `Dispose` when it is destroyed.
+
+### Using Addressables
+
+```csharp
+using Cysharp.Threading.Tasks;
+using Radio;
+using UnityEngine;
+
+public class AddressableRadioSample : MonoBehaviour
+{
+    private AddressableAudioPlayer _player;
+
+    private void Awake()
+    {
+        // Creates an SE channel + 3 BGM channels on this GameObject
+        _player = new AddressableAudioPlayer(gameObject);
+    }
+
+    private void Start()
+    {
+        // Load and play BGM from an Addressables string address
+        _player.PlayBgmAsync(
+            "assets/audio/bgm/MainTheme.wav",
+            loop: true,
+            destroyCancellationToken).Forget();
     }
 
     private void OnDestroy()
     {
-        // Releases all cached BGM handles
+        // Release all retained BGM handles
         _player.Dispose();
     }
 }
@@ -69,27 +106,66 @@ public class RadioSample : MonoBehaviour
 
 | Constructor | Description |
 |-------------|-------------|
-| `AudioPlayerCore(GameObject root, uint bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)` | Initializes the player, attaching `AudioSource` components to `root` as needed. `bgmChannelCount` sets the number of BGM channels. Set `useVoice` to `true` to enable a dedicated voice channel. |
-| `AudioPlayerCore(GameObject root, TimeSpan fadeDuration, uint bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)` | Same as above, with an additional `fadeDuration` parameter for cross-fade transitions. *(Requires `ENABLE_LITMOTION`)* |
+| `AudioPlayer(GameObject root, uint bgmChannelCount = 3, bool useVoice = false)` | Initializes the player, attaching `AudioSource` components to `root` as needed. Set `useVoice` to `true` to enable a dedicated voice channel. |
+| `AddressableAudioPlayer(GameObject root, uint bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)` | Adds Addressables loading and handle ownership to `AudioPlayer`. *(Requires Addressables and AssetsRegistry)* |
+
+### Properties
+
+| Property | Description |
+|----------|-------------|
+| `AudioSources Sources` | Exposes the `AudioSource` components managed by this player. |
+| `AudioSource Sources.Se` | The sound-effect channel. |
+| `AudioSource? Sources.Voice` | The voice channel, or `null` when `useVoice` is `false`. |
+| `IReadOnlyList<AudioSource> Sources.Bgm` | The BGM channels in rotation order. |
+| `IReadOnlyList<AudioSource> Sources.All` | Every channel in SE, optional Voice, then BGM order. |
+
+The list structure of `Sources.Bgm` and `Sources.All` is read-only, while each `AudioSource` remains mutable. Users can configure properties such as `volume`, `outputAudioMixerGroup`, and `spatialBlend`.
 
 ### Methods
 
 | Method | Description |
 |--------|-------------|
-| `PlayBgmAsync(string address, bool loop, CancellationToken cancellationToken)` | Loads and plays a BGM clip from the given Addressables address. Loops by default. |
-| `PlayBgmAsync(AssetReferenceT<AudioClip> reference, bool loop, CancellationToken cancellationToken)` | Loads and plays a BGM clip from an `AssetReferenceT<AudioClip>`. Loops by default. |
-| `StopAllBgm()` | Stops all playing BGM channels and releases cached handles. |
-| `PlaySeAsync(string address, CancellationToken cancellationToken)` | Loads and plays a sound effect, then releases the handle when playback finishes. |
-| `PlaySeAsync(AssetReferenceT<AudioClip> reference, CancellationToken cancellationToken)` | Loads and plays a sound effect from an `AssetReferenceT<AudioClip>`. |
-| `PlayVoiceAsync(string address, CancellationToken cancellationToken)` | Loads and plays a voice clip. *(Requires `useVoice: true` in constructor)* |
-| `PlayVoiceAsync(AssetReferenceT<AudioClip> reference, CancellationToken cancellationToken)` | Loads and plays a voice clip from an `AssetReferenceT<AudioClip>`. *(Requires `useVoice: true` in constructor)* |
-| `CrossFadeBgmAsync(string address, bool loop, CancellationToken cancellationToken)` | Performs a cross-fade transition to a new BGM track. *(Requires `ENABLE_LITMOTION`)* |
-| `CrossFadeBgmAsync(AssetReferenceT<AudioClip> reference, bool loop, CancellationToken cancellationToken)` | Cross-fades to a new BGM track from an `AssetReferenceT<AudioClip>`. *(Requires `ENABLE_LITMOTION`)* |
+| `PlayBgmAsync(AudioClip clip, bool loop, CancellationToken cancellationToken)` | Plays the specified BGM clip on the next BGM channel. Loops by default. |
+| `PlaySeAsync(AudioClip clip, CancellationToken cancellationToken)` | Plays a sound effect and waits for the clip length. |
+| `PlayVoiceAsync(AudioClip clip, CancellationToken cancellationToken)` | Plays a voice clip. *(Requires `useVoice: true` in constructor)* |
+| `CrossFadeBgmAsync(AudioClip clip, bool loop, CancellationToken cancellationToken)` | Transitions BGM through the configured `IBgmTransition`. |
+| `ConfigureBgmTransition(IBgmTransition transition)` | Configures the custom BGM transition used by `CrossFadeBgmAsync`. |
+| `StopAllBgm()` | Stops all BGM channels. `AddressableAudioPlayer` also releases retained BGM handles. |
+| Addressables overloads of `PlayBgmAsync` / `PlaySeAsync` / `PlayVoiceAsync` / `CrossFadeBgmAsync` | Loads and plays from a string address or `AssetReferenceT<AudioClip>`. *(`AddressableAudioPlayer` only)* |
 | `SetMasterVolume(float volume)` | Sets the master volume (0–1) applied to all channels. |
 | `SetBgmVolume(float volume)` | Sets the BGM volume (0–1). |
 | `SetSeVolume(float volume)` | Sets the sound effect volume (0–1). |
 | `SetVoiceVolume(float volume)` | Sets the voice volume (0–1). *(Requires `useVoice: true` in constructor)* |
-| `Dispose()` | Releases all cached BGM asset handles. |
+| `Dispose()` | Releases all retained BGM asset handles. *(`AddressableAudioPlayer` only)* |
+
+### BGM Transitions
+
+When using LitMotion, configure the cross-fade after creating the player:
+
+```csharp
+var player = new AudioPlayer(gameObject)
+    .UseLitMotionCrossFade(TimeSpan.FromSeconds(3));
+
+await player.CrossFadeBgmAsync(nextBgmClip, cancellationToken: destroyCancellationToken);
+```
+
+A transition that does not depend on LitMotion can implement and configure the following public interface:
+
+```csharp
+public interface IBgmTransition
+{
+    UniTask TransitionAsync(
+        BgmTransitionContext context,
+        AudioClip clip,
+        bool loop,
+        CancellationToken cancellationToken);
+}
+
+player.ConfigureBgmTransition(new CustomBgmTransition());
+```
+
+`BgmTransitionContext` limits the exposed operations to the current BGM channel, managed volume, acquisition of the next BGM channel, and temporary volume control for channels owned by the transition.
 
 ## License
+
 This library is released under the MIT license.

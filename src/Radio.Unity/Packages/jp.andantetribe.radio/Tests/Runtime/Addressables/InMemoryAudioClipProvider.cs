@@ -7,14 +7,17 @@ using UnityEngine.ResourceManagement.ResourceProviders;
 
 namespace Radio.Tests
 {
-    internal class InMemoryAudioClipProvider : ResourceProviderBase
+    public class InMemoryAudioClipProvider : ResourceProviderBase
     {
         private readonly IReadOnlyDictionary<string, AudioClip> _clips;
         private readonly Dictionary<string, int> _loadCounts = new();
+        private readonly Dictionary<string, int> _releaseCounts = new();
 
         public InMemoryAudioClipProvider(IReadOnlyDictionary<string, AudioClip> clips) => _clips = clips;
 
         public int LoadCount(string key) => _loadCounts.GetValueOrDefault(key, 0);
+
+        public int ReleaseCount(string key) => _releaseCounts.GetValueOrDefault(key, 0);
 
         public override Type GetDefaultType(IResourceLocation location) => typeof(AudioClip);
 
@@ -36,6 +39,8 @@ namespace Radio.Tests
 
         public override void Release(IResourceLocation location, object asset)
         {
+            var key = location.PrimaryKey;
+            _releaseCounts[key] = ReleaseCount(key) + 1;
         }
     }
 }
