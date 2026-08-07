@@ -27,10 +27,10 @@ Radio does not create or discover `AudioSource` components. The application owns
 
 - Unity 2022.3 or later
 - [UniTask](https://github.com/Cysharp/UniTask) 2.5.10 or later
-- [Addressables](https://docs.unity3d.com/Manual/com.unity.addressables.html) 1.21.21 or later
+- *(Optional)* [Addressables](https://docs.unity3d.com/Manual/com.unity.addressables.html) 1.21.21 or later for `AddressableAudioHub` and `CachedAddressableAudioHub`
 - *(Optional)* [LitMotion](https://github.com/AnnulusGames/LitMotion) for `InteractiveAudioHub`
 
-When LitMotion is installed, the package's assembly definition enables `InteractiveAudioHub` through its version define.
+Addressables and LitMotion are not declared as package dependencies. When either package is installed, the package assembly enables the corresponding hubs through its Version Defines.
 
 ## Installation
 
@@ -42,57 +42,68 @@ https://github.com/AndanteTribe/Radio.git?path=src/Radio.Unity/Packages/jp.andan
 
 ## Quick Start
 
-Assign the sources and clips in the Inspector. The following example uses one source for sound effects, two sources for rotating BGM playback, and one composite volume controller for both categories.
+The following `AudioManager` is a typical setup: one looping BGM source, one overlapping one-shot source for sound effects, and shared master/category volume controls. Assign both `AudioSource` fields in the Inspector.
 
 ```csharp
 using Cysharp.Threading.Tasks;
 using Radio;
 using UnityEngine;
 
-public sealed class RadioSample : MonoBehaviour
+public sealed class AudioManager : MonoBehaviour
 {
-    private enum VolumeKind
+    private enum AudioGroup
     {
         Bgm,
         Se,
     }
 
+    [SerializeField] private AudioSource bgmSource = null!;
     [SerializeField] private AudioSource seSource = null!;
-    [SerializeField] private AudioSource[] bgmSources = null!;
-    [SerializeField] private AudioClip seClip = null!;
-    [SerializeField] private AudioClip bgmClip = null!;
 
-    private SingleChannelAudioHub seHub = null!;
-    private MultiChannelsAudioHub bgmHub = null!;
-    private CompositeVolumeAudioHub<AudioClip, VolumeKind> volumes = null!;
+    private MultiChannelsAudioHub bgm = null!;
+    private SingleChannelAudioHub se = null!;
+    private CompositeVolumeAudioHub<AudioClip, AudioGroup> volumes = null!;
 
     private void Awake()
     {
-        seHub = new SingleChannelAudioHub(seSource);
-        bgmHub = new MultiChannelsAudioHub(bgmSources, loop: true);
+        bgm = new MultiChannelsAudioHub(new[] { bgmSource }, volume: 1.0f, loop: true);
+        se = new SingleChannelAudioHub(seSource, volume: 1.0f);
 
         var builder =
-            new CompositeVolumeAudioHub<AudioClip, VolumeKind>.Builder(masterVolume: 1.0f);
-        builder.AddHub(VolumeKind.Bgm, bgmHub);
-        builder.AddHub(VolumeKind.Se, seHub);
-        builder.SetVolume(VolumeKind.Bgm, 0.7f);
-        builder.SetVolume(VolumeKind.Se, 1.0f);
+            new CompositeVolumeAudioHub<AudioClip, AudioGroup>.Builder(masterVolume: 1.0f);
+        builder.AddHub(AudioGroup.Bgm, bgm);
+        builder.AddHub(AudioGroup.Se, se);
+        builder.SetVolume(AudioGroup.Bgm, 1.0f);
+        builder.SetVolume(AudioGroup.Se, 1.0f);
         volumes = builder.Build();
     }
 
-    private async UniTaskVoid Start()
+    public void PlayBgm(AudioClip clip)
     {
-        // A looping task remains pending until its channel cycles, StopAll is called,
-        // or the token is cancelled, so fire-and-forget is appropriate here.
-        bgmHub.PlayAsync(bgmClip, destroyCancellationToken).Forget();
-
-        // A one-shot task completes after the clip duration.
-        await seHub.PlayAsync(seClip, destroyCancellationToken);
+        bgm.StopAll();
+        bgm.PlayAsync(clip, destroyCancellationToken).Forget();
     }
+
+    public void PlaySe(AudioClip clip) =>
+        se.PlayAsync(clip, destroyCancellationToken).Forget();
+
+    public void StopBgm() => bgm.StopAll();
+
+    public void StopAll()
+    {
+        bgm.StopAll();
+        se.StopAll();
+    }
+
+    public void SetBgmLoop(bool value) => bgm.ApplyLoop(value);
 
     public void SetMasterVolume(float value) => volumes.ApplyMasterVolume(value);
 
-    public void SetBgmVolume(float value) => volumes.ApplyVolume(VolumeKind.Bgm, value);
+    public void SetBgmVolume(float value) => volumes.ApplyVolume(AudioGroup.Bgm, value);
+
+    public void SetSeVolume(float value) => volumes.ApplyVolume(AudioGroup.Se, value);
+
+    private void OnDestroy() => volumes.Dispose();
 }
 ```
 
@@ -100,97 +111,38 @@ All volume arguments must be greater than `0` and less than or equal to `1`. Inv
 
 ## Playback Hubs
 
-### `IAudioHub<T>`
+### Common interfaces
 
-```csharp
-public interface IAudioHub<in T>
-{
-    ReadOnlySpan<AudioSource> AudioSources { get; }
-    UniTask PlayAsync(T key, CancellationToken cancellationToken);
-    void StopAll();
-    void ApplyVolume(float value);
-}
-```
+| API | Description |
+|---|---|
+| `IAudioHub<T>` | Common playback contract for a key of type `T`. |
+| `IAudioHub<T>.AudioSources` | Returns the `AudioSource` instances managed by the hub without allocating an array. |
+| `IAudioHub<T>.PlayAsync(T, CancellationToken)` | Starts playback and returns a task representing that implementation's playback lifetime. |
+| `IAudioHub<T>.StopAll()` | Stops every source managed by the hub. |
+| `IAudioHub<T>.ApplyVolume(float)` | Applies the hub's effective volume. Values must be greater than `0` and less than or equal to `1`. |
+| `ILoopableAudioHub<T>` | Extends `IAudioHub<T>` with loop control. |
+| `ILoopableAudioHub<T>.ApplyLoop(bool)` | Applies the loop setting to all managed sources and subsequent playback. |
 
-`AudioSources` exposes the sources owned by the hub without allocating an array. `StopAll` stops that hub's sources, while `ApplyVolume` applies the hub's effective volume.
+### Implementations
 
-### `SingleChannelAudioHub`
+| Type | Construction and input | Behavior |
+|---|---|---|
+| `SingleChannelAudioHub` | `SingleChannelAudioHub(AudioSource, float)`<br>Input: `AudioClip` | Uses `AudioSource.PlayOneShot`, allowing clips to overlap. `PlayAsync` waits for the clip duration; cancellation stops the wait but not an already-started one-shot. Volume changes affect subsequent one-shots. |
+| `MultiChannelsAudioHub` | `MultiChannelsAudioHub(ReadOnlyMemory<AudioSource>, float, bool)`<br>Input: `AudioClip` | Uses `AudioSource.Play` and rotates through the supplied channels. Looping calls wait for channel reuse, `StopAll`, or cancellation; non-looping calls can also complete when the clip duration elapses. Implements `ILoopableAudioHub<AudioClip>`. |
+| `InteractiveAudioHub` | `InteractiveAudioHub(ReadOnlyMemory<AudioSource>, TimeSpan, float, bool)` or the overload with a three-second fade<br>Input: `AudioClip` | Adds fade-in, sine/cosine cross-fades, and playback-position synchronization. `PlayAsync` waits for both the transition and channel lifetime. `FadeDuration` exposes the transition duration. Implements `ILoopableAudioHub<AudioClip>` and is available only with LitMotion. |
 
-```csharp
-var hub = new SingleChannelAudioHub(source, volume: 0.5f);
-await hub.PlayAsync(clip, cancellationToken);
-```
-
-Playback uses `AudioSource.PlayOneShot`, so clips can overlap. The configured value is passed as `PlayOneShot`'s `volumeScale`; the effective volume is also affected by `AudioSource.volume`. Changing the hub volume affects subsequent one-shots, not ones already playing. Cancelling `PlayAsync` cancels its duration wait but does not stop an already-started one-shot; use `StopAll` to stop the source.
-
-### `MultiChannelsAudioHub`
-
-```csharp
-var hub = new MultiChannelsAudioHub(channels, volume: 0.5f, loop: true);
-hub.PlayAsync(clip, cancellationToken).Forget();
-```
-
-Each request stops and reuses the next source in the channel ring. Provide at least one non-null `AudioSource`. `Loop` is read when playback starts and can be changed for subsequent requests.
-
-For non-looping playback, `PlayAsync` completes when the clip duration elapses, its channel cycles, or `StopAll` is called. For looping playback, it remains pending until the channel cycles, `StopAll` is called, or the token is cancelled. Cancelling a request stops and clears the source selected for that request.
-
-### `InteractiveAudioHub`
-
-`InteractiveAudioHub` is available when LitMotion is installed.
-
-```csharp
-var hub = new InteractiveAudioHub(
-    channels,
-    fadeDuration: TimeSpan.FromSeconds(0.5),
-    volume: 0.5f,
-    loop: true);
-
-hub.PlayAsync(clip, cancellationToken).Forget();
-```
-
-The first clip fades in. Later clips cross-fade from the current source to the next source using sine/cosine curves, and the next clip starts at the current playback position modulo its own length. Supply at least two non-null sources for cross-fading. The constructor overload without `fadeDuration` uses three seconds.
-
-`PlayAsync` represents the playback lifetime, not a notification that only the fade has completed. Internally it waits for both the fade operation and the same channel-lifetime rules as `MultiChannelsAudioHub`; a looping call can therefore remain pending after the fade. If only the fade duration is relevant to the caller, wait for `UniTask.Delay(hub.FadeDuration)` separately.
-
-Starting another clip cancels the active fade and begins the next transition. `StopAll` cancels the fade, stops every channel, clears clips, and resets the channel ring.
+Supply at least one non-null source to `MultiChannelsAudioHub`, and at least two for normal cross-fading with `InteractiveAudioHub`. `PlayAsync` represents the playback lifetime, not merely the moment playback starts; a looping task can remain pending until its channel is reused, stopped, or cancelled.
 
 ## Addressables Wrappers
 
 Both wrappers implement `IAudioHub<string>` and `IAudioHub<AssetReferenceT<AudioClip>>` and delegate `AudioSources`, `StopAll`, and `ApplyVolume` to the wrapped clip hub.
 
-### `AddressableAudioHub`
+| Type | Construction and input | Handle lifetime |
+|---|---|---|
+| `AddressableAudioHub` | `AddressableAudioHub(IAudioHub<AudioClip>)`<br>Input: `string` or `AssetReferenceT<AudioClip>` | Loads on every request, delegates playback to the wrapped hub, and releases the handle when playback completes, fails, or is cancelled. Available only with Addressables. |
+| `CachedAddressableAudioHub` | `CachedAddressableAudioHub(IAudioHub<AudioClip>)`<br>Input: `string` or `AssetReferenceT<AudioClip>` | Retains every successful Addressables acquisition and releases the corresponding reference counts in `Dispose`. `StopAll` stops playback without releasing cached handles. Available only with Addressables. |
 
-```csharp
-var clipHub = new SingleChannelAudioHub(source);
-var addressableHub = new AddressableAudioHub(clipHub);
-
-await addressableHub.PlayAsync("audio/se/click", cancellationToken);
-await addressableHub.PlayAsync(assetReference, cancellationToken);
-```
-
-Every call invokes `Addressables.LoadAssetAsync<AudioClip>`. Its handle is released after the wrapped `PlayAsync` completes, fails, or is cancelled. A null load result is released without starting playback.
-
-### `CachedAddressableAudioHub`
-
-```csharp
-var clipHub = new MultiChannelsAudioHub(channels, loop: true);
-var addressableHub = new CachedAddressableAudioHub(clipHub);
-
-using var playbackCancellation = new CancellationTokenSource();
-var playbackTask =
-    addressableHub.PlayAsync("audio/bgm/main", playbackCancellation.Token);
-
-// During a controlled shutdown, first cancel and observe every outstanding
-// PlayAsync operation, then release retained acquisitions.
-playbackCancellation.Cancel();
-await playbackTask.SuppressCancellationThrow();
-addressableHub.StopAll();
-addressableHub.Dispose();
-```
-
-This wrapper still calls `Addressables.LoadAssetAsync<AudioClip>` for every request, allowing Addressables to reuse an already-loaded operation. Each successful acquisition is counted and retained; `Dispose` calls `Addressables.Release` the corresponding number of times. `StopAll` only stops playback and does not release the retained handles.
-
-`Dispose` is not synchronized with in-flight `PlayAsync` operations. Call it only after all loads and playback tasks have completed or been cancelled and observed, and do not start new requests afterwards. Applications that require coordinated asynchronous shutdown should own that cancellation and waiting policy outside the hub.
+`CachedAddressableAudioHub.Dispose` is not synchronized with in-flight operations. Cancel and observe outstanding `PlayAsync` calls before disposing it, and do not start new requests afterwards.
 
 ## Composite Volume
 
@@ -200,25 +152,22 @@ This wrapper still calls `Addressables.LoadAssetAsync<AudioClip>` for every requ
 master volume × group volume
 ```
 
-Use its nested builder to assemble the immutable set of IDs:
+Master and group volumes default to `0.5`.
 
-```csharp
-var builder =
-    new CompositeVolumeAudioHub<AudioClip, VolumeKind>.Builder(masterVolume: 0.8f);
-
-builder.AddHub(VolumeKind.Bgm, explorationBgmHub);
-builder.AddHub(VolumeKind.Bgm, battleBgmHub); // Multiple hubs may share one ID.
-builder.AddHub(VolumeKind.Se, seHub);
-builder.SetVolume(VolumeKind.Bgm, 0.6f);
-builder.SetVolume(VolumeKind.Se, 1.0f);
-
-var volumes = builder.Build();
-
-volumes.ApplyMasterVolume(0.5f);             // Reapplies every group.
-volumes.ApplyVolume(VolumeKind.Bgm, 0.75f);  // Reapplies only BGM hubs.
-```
-
-An ID must be registered with `AddHub` before `SetVolume`; otherwise `KeyNotFoundException` is thrown. The default master and group volumes are `0.5`. `Count`, `GetVolume`, and `GetHubs` expose the resulting configuration. The builder is a mutable struct; avoid copying it while assembling a configuration.
+| API | Description |
+|---|---|
+| `CompositeVolumeAudioHub<TClip, TId>.MasterVolume` | Gets the current master volume. |
+| `CompositeVolumeAudioHub<TClip, TId>.Count` | Gets the number of registered groups. |
+| `GetVolume(TId)` | Gets a group's volume before master-volume multiplication. |
+| `GetHubs(TId)` | Gets the hubs registered in a group. |
+| `ApplyMasterVolume(float)` | Changes the master volume and reapplies every group. |
+| `ApplyVolume(TId, float)` | Changes one group volume and reapplies that group. |
+| `Dispose()` | Disposes every registered hub that implements `IDisposable`. |
+| `Builder(IEqualityComparer<TId>?, float)` | Creates a builder with an optional ID comparer and master volume. The default struct is also valid. |
+| `Builder.AddHub(TId, IAudioHub<TClip>)` | Registers a hub. Multiple hubs can share one ID. |
+| `Builder.SetVolume(TId, float)` | Sets a registered group's volume; an unknown ID throws `KeyNotFoundException`. |
+| `Builder.SetMasterVolume(float)` | Sets the master volume used by `Build`. |
+| `Builder.Build()` | Builds the composite and resets the builder's registrations. |
 
 ## License
 

@@ -27,10 +27,10 @@ Radioは`AudioSource`コンポーネントの生成や検索を行いません�
 
 - Unity 2022.3以上
 - [UniTask](https://github.com/Cysharp/UniTask) 2.5.10以上
-- [Addressables](https://docs.unity3d.com/Manual/com.unity.addressables.html) 1.21.21以上
+- *（任意）* `AddressableAudioHub`と`CachedAddressableAudioHub`を利用する場合は[Addressables](https://docs.unity3d.com/Manual/com.unity.addressables.html) 1.21.21以上
 - *（任意）* `InteractiveAudioHub`を利用する場合は[LitMotion](https://github.com/AnnulusGames/LitMotion)
 
-LitMotionがインストールされている場合、パッケージのAssembly Definitionに設定されたVersion Defineによって`InteractiveAudioHub`が有効になります。
+AddressablesとLitMotionはRadio自体の依存関係には含まれません。各パッケージがインストールされている場合、Assembly DefinitionのVersion Defineによって対応するHubが有効になります。
 
 ## インストール
 
@@ -42,57 +42,68 @@ https://github.com/AndanteTribe/Radio.git?path=src/Radio.Unity/Packages/jp.andan
 
 ## クイックスタート
 
-以下の例では、InspectorからSE用AudioSourceを1つ、交互に使用するBGM用AudioSourceを2つ、各AudioClipを設定し、両カテゴリの音量を1つのCompositeで管理します。
+以下は、ループするBGM用AudioSourceを1つ、重複再生するSE用AudioSourceを1つ、マスター音量とカテゴリ音量を持つ、一般的な`AudioManager`の実装例です。2つの`AudioSource`はInspectorから設定してください。
 
 ```csharp
 using Cysharp.Threading.Tasks;
 using Radio;
 using UnityEngine;
 
-public sealed class RadioSample : MonoBehaviour
+public sealed class AudioManager : MonoBehaviour
 {
-    private enum VolumeKind
+    private enum AudioGroup
     {
         Bgm,
         Se,
     }
 
+    [SerializeField] private AudioSource bgmSource = null!;
     [SerializeField] private AudioSource seSource = null!;
-    [SerializeField] private AudioSource[] bgmSources = null!;
-    [SerializeField] private AudioClip seClip = null!;
-    [SerializeField] private AudioClip bgmClip = null!;
 
-    private SingleChannelAudioHub seHub = null!;
-    private MultiChannelsAudioHub bgmHub = null!;
-    private CompositeVolumeAudioHub<AudioClip, VolumeKind> volumes = null!;
+    private MultiChannelsAudioHub bgm = null!;
+    private SingleChannelAudioHub se = null!;
+    private CompositeVolumeAudioHub<AudioClip, AudioGroup> volumes = null!;
 
     private void Awake()
     {
-        seHub = new SingleChannelAudioHub(seSource);
-        bgmHub = new MultiChannelsAudioHub(bgmSources, loop: true);
+        bgm = new MultiChannelsAudioHub(new[] { bgmSource }, volume: 1.0f, loop: true);
+        se = new SingleChannelAudioHub(seSource, volume: 1.0f);
 
         var builder =
-            new CompositeVolumeAudioHub<AudioClip, VolumeKind>.Builder(masterVolume: 1.0f);
-        builder.AddHub(VolumeKind.Bgm, bgmHub);
-        builder.AddHub(VolumeKind.Se, seHub);
-        builder.SetVolume(VolumeKind.Bgm, 0.7f);
-        builder.SetVolume(VolumeKind.Se, 1.0f);
+            new CompositeVolumeAudioHub<AudioClip, AudioGroup>.Builder(masterVolume: 1.0f);
+        builder.AddHub(AudioGroup.Bgm, bgm);
+        builder.AddHub(AudioGroup.Se, se);
+        builder.SetVolume(AudioGroup.Bgm, 1.0f);
+        builder.SetVolume(AudioGroup.Se, 1.0f);
         volumes = builder.Build();
     }
 
-    private async UniTaskVoid Start()
+    public void PlayBgm(AudioClip clip)
     {
-        // ループ再生のタスクは、チャンネルが一巡するか、StopAllまたはキャンセルまで
-        // 完了しないため、ここではfire-and-forgetにします。
-        bgmHub.PlayAsync(bgmClip, destroyCancellationToken).Forget();
-
-        // OneShotのタスクは、クリップの長さに相当する待機後に完了します。
-        await seHub.PlayAsync(seClip, destroyCancellationToken);
+        bgm.StopAll();
+        bgm.PlayAsync(clip, destroyCancellationToken).Forget();
     }
+
+    public void PlaySe(AudioClip clip) =>
+        se.PlayAsync(clip, destroyCancellationToken).Forget();
+
+    public void StopBgm() => bgm.StopAll();
+
+    public void StopAll()
+    {
+        bgm.StopAll();
+        se.StopAll();
+    }
+
+    public void SetBgmLoop(bool value) => bgm.ApplyLoop(value);
 
     public void SetMasterVolume(float value) => volumes.ApplyMasterVolume(value);
 
-    public void SetBgmVolume(float value) => volumes.ApplyVolume(VolumeKind.Bgm, value);
+    public void SetBgmVolume(float value) => volumes.ApplyVolume(AudioGroup.Bgm, value);
+
+    public void SetSeVolume(float value) => volumes.ApplyVolume(AudioGroup.Se, value);
+
+    private void OnDestroy() => volumes.Dispose();
 }
 ```
 
@@ -100,97 +111,38 @@ public sealed class RadioSample : MonoBehaviour
 
 ## 再生Hub
 
-### `IAudioHub<T>`
+### 共通インターフェイス
 
-```csharp
-public interface IAudioHub<in T>
-{
-    ReadOnlySpan<AudioSource> AudioSources { get; }
-    UniTask PlayAsync(T key, CancellationToken cancellationToken);
-    void StopAll();
-    void ApplyVolume(float value);
-}
-```
+| API | 説明 |
+|---|---|
+| `IAudioHub<T>` | `T`型のキーを受け取る共通の再生契約です。 |
+| `IAudioHub<T>.AudioSources` | Hubが管理する`AudioSource`を、配列を生成せずに返します。 |
+| `IAudioHub<T>.PlayAsync(T, CancellationToken)` | 再生を開始し、各実装が定める再生期間を表すタスクを返します。 |
+| `IAudioHub<T>.StopAll()` | Hubが管理するすべてのAudioSourceを停止します。 |
+| `IAudioHub<T>.ApplyVolume(float)` | Hubの実効音量を反映します。値は`0`より大きく`1`以下である必要があります。 |
+| `ILoopableAudioHub<T>` | `IAudioHub<T>`へループ制御を追加します。 |
+| `ILoopableAudioHub<T>.ApplyLoop(bool)` | 管理対象の全AudioSourceと、以降の再生へループ設定を反映します。 |
 
-`AudioSources`は、Hubが所有するAudioSourceを配列生成なしで公開します。`StopAll`はそのHubのAudioSourceを停止し、`ApplyVolume`はHubの実効音量を反映します。
+### 実装
 
-### `SingleChannelAudioHub`
+| 型 | 生成と入力 | 振る舞い |
+|---|---|---|
+| `SingleChannelAudioHub` | `SingleChannelAudioHub(AudioSource, float)`<br>入力: `AudioClip` | `AudioSource.PlayOneShot`を使うため重複再生できます。`PlayAsync`はクリップの長さだけ待機します。キャンセルされても開始済みのOneShotは停止せず、待機だけを終了します。音量変更は次回以降のOneShotへ反映されます。 |
+| `MultiChannelsAudioHub` | `MultiChannelsAudioHub(ReadOnlyMemory<AudioSource>, float, bool)`<br>入力: `AudioClip` | `AudioSource.Play`を使い、渡されたチャンネルを順番に利用します。ループ再生はチャンネルの再利用、`StopAll`、キャンセルまで待機し、非ループ再生ではクリップ長の経過でも完了します。`ILoopableAudioHub<AudioClip>`を実装します。 |
+| `InteractiveAudioHub` | `InteractiveAudioHub(ReadOnlyMemory<AudioSource>, TimeSpan, float, bool)`、またはフェード時間が3秒のオーバーロード<br>入力: `AudioClip` | フェードイン、Sin/Cosカーブによるクロスフェード、再生位置の同期を追加します。`PlayAsync`は遷移とチャンネルの生存期間の両方を待機します。`FadeDuration`から遷移時間を取得できます。`ILoopableAudioHub<AudioClip>`を実装し、LitMotion導入時のみ利用できます。 |
 
-```csharp
-var hub = new SingleChannelAudioHub(source, volume: 0.5f);
-await hub.PlayAsync(clip, cancellationToken);
-```
-
-再生には`AudioSource.PlayOneShot`を使うため、複数クリップを重ねて再生できます。設定値は`PlayOneShot`の`volumeScale`として渡され、実効音量には`AudioSource.volume`も影響します。Hubの音量変更は次回以降のOneShotに適用され、すでに再生中のOneShotには反映されません。`PlayAsync`のキャンセルは再生時間の待機だけをキャンセルし、開始済みのOneShotは停止しません。停止する場合は`StopAll`を呼び出してください。
-
-### `MultiChannelsAudioHub`
-
-```csharp
-var hub = new MultiChannelsAudioHub(channels, volume: 0.5f, loop: true);
-hub.PlayAsync(clip, cancellationToken).Forget();
-```
-
-各リクエストは、チャンネルを順番に選び、選択したAudioSourceを停止して再利用します。1つ以上のnullでない`AudioSource`を渡してください。`Loop`は再生開始時に読み取られ、以降のリクエストに向けて変更できます。
-
-非ループ再生の`PlayAsync`は、クリップの長さが経過する、対象チャンネルが一巡する、または`StopAll`が呼ばれた時点で完了します。ループ再生では、チャンネルが一巡する、`StopAll`が呼ばれる、またはトークンがキャンセルされるまで待機します。リクエストをキャンセルすると、そのリクエストで選択したAudioSourceを停止し、クリップを解除します。
-
-### `InteractiveAudioHub`
-
-`InteractiveAudioHub`はLitMotionがインストールされている場合に利用できます。
-
-```csharp
-var hub = new InteractiveAudioHub(
-    channels,
-    fadeDuration: TimeSpan.FromSeconds(0.5),
-    volume: 0.5f,
-    loop: true);
-
-hub.PlayAsync(clip, cancellationToken).Forget();
-```
-
-最初のクリップはフェードインします。以降はSin/Cosカーブを使って現在のAudioSourceから次のAudioSourceへクロスフェードし、次のクリップは現在の再生位置を自身の長さで折り返した位置から開始します。クロスフェード用途では、2つ以上のnullでないAudioSourceを渡してください。`fadeDuration`を省略するコンストラクタでは3秒になります。
-
-`PlayAsync`は再生の生存期間を表すものであり、フェードだけの完了通知ではありません。内部ではフェード処理と`MultiChannelsAudioHub`と同様のチャンネル生存期間の両方を待つため、ループ再生ではフェード完了後もタスクが待機し続けることがあります。フェード時間だけ待ちたい場合は、別途`UniTask.Delay(hub.FadeDuration)`を利用してください。
-
-新しいクリップを開始すると、実行中のフェードをキャンセルして次の遷移を開始します。`StopAll`はフェードをキャンセルし、すべてのAudioSourceを停止してクリップを解除し、チャンネルの状態をリセットします。
+`MultiChannelsAudioHub`には1つ以上、通常のクロスフェードを行う`InteractiveAudioHub`には2つ以上のnullでないAudioSourceを渡してください。`PlayAsync`は再生開始の通知ではなく再生の生存期間を表すため、ループ再生のタスクはチャンネルが再利用、停止、またはキャンセルされるまで待機し続ける場合があります。
 
 ## Addressablesラッパー
 
 どちらのラッパーも`IAudioHub<string>`と`IAudioHub<AssetReferenceT<AudioClip>>`を実装し、`AudioSources`、`StopAll`、`ApplyVolume`は内側のAudioClip用Hubへ委譲します。
 
-### `AddressableAudioHub`
+| 型 | 生成と入力 | ハンドルの生存期間 |
+|---|---|---|
+| `AddressableAudioHub` | `AddressableAudioHub(IAudioHub<AudioClip>)`<br>入力: `string`または`AssetReferenceT<AudioClip>` | リクエストごとにロードし、内側のHubへ再生を委譲します。再生の完了、失敗、キャンセル時にハンドルを解放します。Addressables導入時のみ利用できます。 |
+| `CachedAddressableAudioHub` | `CachedAddressableAudioHub(IAudioHub<AudioClip>)`<br>入力: `string`または`AssetReferenceT<AudioClip>` | 成功したAddressablesの取得を保持し、`Dispose`で参照回数分を解放します。`StopAll`は再生を停止しますが、保持中のハンドルは解放しません。Addressables導入時のみ利用できます。 |
 
-```csharp
-var clipHub = new SingleChannelAudioHub(source);
-var addressableHub = new AddressableAudioHub(clipHub);
-
-await addressableHub.PlayAsync("audio/se/click", cancellationToken);
-await addressableHub.PlayAsync(assetReference, cancellationToken);
-```
-
-呼び出しごとに`Addressables.LoadAssetAsync<AudioClip>`を実行します。ハンドルは、内側の`PlayAsync`が完了、失敗、またはキャンセルされた後に解放されます。ロード結果がnullの場合は再生せず、ハンドルを解放します。
-
-### `CachedAddressableAudioHub`
-
-```csharp
-var clipHub = new MultiChannelsAudioHub(channels, loop: true);
-var addressableHub = new CachedAddressableAudioHub(clipHub);
-
-using var playbackCancellation = new CancellationTokenSource();
-var playbackTask =
-    addressableHub.PlayAsync("audio/bgm/main", playbackCancellation.Token);
-
-// 制御された終了処理では、進行中のすべてのPlayAsyncをキャンセルし、
-// その結果まで確認してから、保持した取得分を解放します。
-playbackCancellation.Cancel();
-await playbackTask.SuppressCancellationThrow();
-addressableHub.StopAll();
-addressableHub.Dispose();
-```
-
-このラッパーもリクエストごとに`Addressables.LoadAssetAsync<AudioClip>`を呼び出し、すでにロード済みの処理の再利用はAddressablesに任せます。成功した取得回数を記録して保持し、`Dispose`で対応する回数だけ`Addressables.Release`を呼び出します。`StopAll`は再生だけを停止し、保持しているハンドルを解放しません。
-
-`Dispose`は進行中の`PlayAsync`と同期しません。すべてのロードと再生タスクが完了するか、キャンセル結果まで確認した後に呼び出し、それ以降は新しい再生を開始しないでください。キャンセルと待機を含む非同期の終了処理が必要なアプリケーションでは、その生存期間管理をHubの外側で実装してください。
+`CachedAddressableAudioHub.Dispose`は進行中の処理と同期しません。未完了の`PlayAsync`をキャンセルして結果を確認した後に破棄し、それ以降は新しい再生を開始しないでください。
 
 ## 複合音量
 
@@ -200,25 +152,22 @@ addressableHub.Dispose();
 マスター音量 × グループ音量
 ```
 
-ネストされたBuilderでIDの集合を構築します。
+マスター音量とグループ音量の既定値は`0.5`です。
 
-```csharp
-var builder =
-    new CompositeVolumeAudioHub<AudioClip, VolumeKind>.Builder(masterVolume: 0.8f);
-
-builder.AddHub(VolumeKind.Bgm, explorationBgmHub);
-builder.AddHub(VolumeKind.Bgm, battleBgmHub); // 1つのIDに複数Hubを登録できます。
-builder.AddHub(VolumeKind.Se, seHub);
-builder.SetVolume(VolumeKind.Bgm, 0.6f);
-builder.SetVolume(VolumeKind.Se, 1.0f);
-
-var volumes = builder.Build();
-
-volumes.ApplyMasterVolume(0.5f);             // すべてのグループへ再反映
-volumes.ApplyVolume(VolumeKind.Bgm, 0.75f);  // BGMグループだけへ再反映
-```
-
-`SetVolume`を呼ぶ前に、対象IDを`AddHub`で登録する必要があります。未登録の場合は`KeyNotFoundException`が送出されます。マスター音量とグループ音量の既定値は`0.5`です。構築結果は`Count`、`GetVolume`、`GetHubs`から確認できます。Builderは可変の構造体なので、構築中のコピーは避けてください。
+| API | 説明 |
+|---|---|
+| `CompositeVolumeAudioHub<TClip, TId>.MasterVolume` | 現在のマスター音量を取得します。 |
+| `CompositeVolumeAudioHub<TClip, TId>.Count` | 登録されているグループ数を取得します。 |
+| `GetVolume(TId)` | マスター音量を乗算する前のグループ音量を取得します。 |
+| `GetHubs(TId)` | グループに登録されたHubを取得します。 |
+| `ApplyMasterVolume(float)` | マスター音量を変更し、全グループへ再反映します。 |
+| `ApplyVolume(TId, float)` | 1つのグループ音量を変更し、そのグループへ再反映します。 |
+| `Dispose()` | 登録されたHubのうち、`IDisposable`を実装するものをすべて破棄します。 |
+| `Builder(IEqualityComparer<TId>?, float)` | IDの比較方法とマスター音量を指定してBuilderを生成します。既定値の構造体も利用できます。 |
+| `Builder.AddHub(TId, IAudioHub<TClip>)` | Hubを登録します。1つのIDに複数のHubを登録できます。 |
+| `Builder.SetVolume(TId, float)` | 登録済みグループの音量を設定します。未登録IDの場合は`KeyNotFoundException`を送出します。 |
+| `Builder.SetMasterVolume(float)` | `Build`で使用するマスター音量を設定します。 |
+| `Builder.Build()` | Compositeを構築し、Builderが保持する登録をリセットします。 |
 
 ## ライセンス
 
