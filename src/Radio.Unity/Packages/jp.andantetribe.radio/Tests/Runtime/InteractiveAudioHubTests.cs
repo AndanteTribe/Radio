@@ -195,7 +195,6 @@ namespace Radio.Tests
 
             await hub.PlayAsync(firstClip, CancellationToken.None).Timeout(s_testTimeout);
             var task = hub.PlayAsync(secondClip, CancellationToken.None);
-            await WaitUntilAsync(() => channels[1].volume > 0.15f && channels[1].volume < 0.75f);
             var currentVolume = channels[0].volume;
             var nextVolume = channels[1].volume;
 
@@ -223,8 +222,7 @@ namespace Radio.Tests
             var firstCompleted = false;
 
             var firstTask = hub.PlayAsync(firstClip, CancellationToken.None).ContinueWith(() => firstCompleted = true);
-            await WaitUntilAsync(() => channels[0].volume > 0.48f);
-            await UniTask.DelayFrame(3).Timeout(s_testTimeout);
+            await WaitUntilAsync(() => Mathf.Approximately(channels[0].volume, 0.5f));
 
             var secondTask = hub.PlayAsync(secondClip, CancellationToken.None);
             await WaitUntilAsync(() => channels[0].clip == null && channels[1].volume > 0.48f);
@@ -252,8 +250,7 @@ namespace Radio.Tests
             var firstCompleted = false;
 
             var firstTask = hub.PlayAsync(firstClip, CancellationToken.None).ContinueWith(() => firstCompleted = true);
-            await WaitUntilAsync(() => channels[0].volume > 0.48f);
-            await UniTask.DelayFrame(3).Timeout(s_testTimeout);
+            await WaitUntilAsync(() => Mathf.Approximately(channels[0].volume, 0.5f));
 
             var secondTask = hub.PlayAsync(secondClip, CancellationToken.None);
             await WaitUntilAsync(() => channels[0].clip == null && channels[1].volume > 0.48f);
