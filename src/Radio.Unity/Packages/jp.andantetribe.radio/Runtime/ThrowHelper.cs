@@ -1,12 +1,15 @@
 ﻿#nullable enable
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace Radio
 {
-    public static class ThrowHelper
+    [ExcludeFromCodeCoverage]
+    internal static class ThrowHelper
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void ThrowIfVolumeOutOfRange(float volume, [CallerArgumentExpression("volume")] string paramName = "")
         {
             if (0 < volume && volume <= 1.0f)

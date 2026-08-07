@@ -11,8 +11,14 @@ using UnityEngine;
 
 namespace Radio
 {
+    /// <summary>
+    /// Plays clips with fade-in, cross-fade, and playback-position synchronization across multiple channels.
+    /// </summary>
     public class InteractiveAudioHub : ILoopableAudioHub<AudioClip>,  IAudioHub<AudioClip>
     {
+        /// <summary>
+        /// The duration of each fade-in or cross-fade transition.
+        /// </summary>
         public readonly TimeSpan FadeDuration;
 
         private readonly ReadOnlyMemory<AudioSource> _channels;
@@ -22,8 +28,19 @@ namespace Radio
         private float _volume;
         private bool _loop;
 
+        /// <inheritdoc />
         public ReadOnlySpan<AudioSource> AudioSources => _channels.Span;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="InteractiveAudioHub"/> class.
+        /// </summary>
+        /// <param name="channels">The audio sources used for transitions.</param>
+        /// <param name="fadeDuration">The duration of each fade-in or cross-fade transition.</param>
+        /// <param name="volume">The initial volume applied to every channel.</param>
+        /// <param name="loop">Whether playback loops by default.</param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="volume"/> is not greater than <c>0</c> and less than or equal to <c>1</c>.
+        /// </exception>
         public InteractiveAudioHub(ReadOnlyMemory<AudioSource> channels, TimeSpan fadeDuration, float volume = 0.5f, bool loop = true)
         {
             _channels = channels;
@@ -39,11 +56,21 @@ namespace Radio
             }
         }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="InteractiveAudioHub"/> class with a three-second fade duration.
+        /// </summary>
+        /// <param name="channels">The audio sources used for transitions.</param>
+        /// <param name="volume">The initial volume applied to every channel.</param>
+        /// <param name="loop">Whether playback loops by default.</param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="volume"/> is not greater than <c>0</c> and less than or equal to <c>1</c>.
+        /// </exception>
         public InteractiveAudioHub(ReadOnlyMemory<AudioSource> channels, float volume = 0.5f, bool loop = true)
             : this(channels, TimeSpan.FromSeconds(3.0f), volume, loop)
         {
         }
 
+        /// <inheritdoc />
         public UniTask PlayAsync(AudioClip key, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -193,6 +220,7 @@ namespace Radio
             return AsyncUnit.Default;
         }
 
+        /// <inheritdoc />
         public void StopAll()
         {
             _crossFadeMotionHandle.TryCancel();
@@ -205,6 +233,7 @@ namespace Radio
             _currentChannelIndex.Value = -1;
         }
 
+        /// <inheritdoc />
         public void ApplyVolume(float value)
         {
             ThrowHelper.ThrowIfVolumeOutOfRange(value);
@@ -218,6 +247,7 @@ namespace Radio
             _volume = value;
         }
 
+        /// <inheritdoc />
         public void ApplyLoop(bool value)
         {
             _loop = value;

@@ -8,6 +8,9 @@ using UnityEngine;
 
 namespace Radio
 {
+    /// <summary>
+    /// Rotates playback requests across multiple <see cref="AudioSource"/> channels.
+    /// </summary>
     public class MultiChannelsAudioHub : ILoopableAudioHub<AudioClip>, IAudioHub<AudioClip>
     {
         private readonly ReadOnlyMemory<AudioSource> _channels;
@@ -15,8 +18,18 @@ namespace Radio
         private float _volume;
         private bool _loop;
 
+        /// <inheritdoc />
         public ReadOnlySpan<AudioSource> AudioSources => _channels.Span;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="MultiChannelsAudioHub"/> class.
+        /// </summary>
+        /// <param name="channels">The audio sources to rotate through in order.</param>
+        /// <param name="volume">The initial volume applied to every channel.</param>
+        /// <param name="loop">Whether playback loops by default.</param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="volume"/> is not greater than <c>0</c> and less than or equal to <c>1</c>.
+        /// </exception>
         public MultiChannelsAudioHub(ReadOnlyMemory<AudioSource> channels, float volume = 0.5f, bool loop = true)
         {
             _channels = channels;
@@ -30,6 +43,7 @@ namespace Radio
             }
         }
 
+        /// <inheritdoc />
         public async UniTask PlayAsync(AudioClip key, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -85,6 +99,7 @@ namespace Radio
             }
         }
 
+        /// <inheritdoc />
         public void StopAll()
         {
             foreach (var channel in _channels.Span)
@@ -96,6 +111,7 @@ namespace Radio
             _currentChannelIndex.Value = -1;
         }
 
+        /// <inheritdoc />
         public void ApplyVolume(float value)
         {
             ThrowHelper.ThrowIfVolumeOutOfRange(value);
@@ -106,6 +122,7 @@ namespace Radio
             _volume = value;
         }
 
+        /// <inheritdoc />
         public void ApplyLoop(bool value)
         {
             _loop = value;
