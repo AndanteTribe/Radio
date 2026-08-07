@@ -118,24 +118,12 @@
       },
       "url": "https://packages.unity.com"
     },
-    "jp.andantetribe.assetsregistry": {
-      "version": "https://github.com/AndanteTribe/AssetsRegistry.git?path=src/AssetsRegistry.Unity/Packages/jp.andantetribe.assetsregistry",
-      "depth": 0,
-      "source": "git",
-      "dependencies": {
-        "com.unity.addressables": "1.21.21",
-        "com.cysharp.unitask": "2.5.10"
-      },
-      "hash": "ff12ee66c071923096a5ebcfc6ae9ffed9b9c1d0"
-    },
     "jp.andantetribe.radio": {
       "version": "file:jp.andantetribe.radio",
       "depth": 0,
       "source": "embedded",
       "dependencies": {
-        "com.unity.addressables": "1.21.21",
-        "com.cysharp.unitask": "2.5.10",
-        "jp.andantetribe.assetsregistry": "1.0.4"
+        "com.cysharp.unitask": "2.5.10"
       }
     },
     "com.unity.modules.ai": {

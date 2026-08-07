@@ -6,7 +6,6 @@
     "com.unity.ide.rider": "3.0.40",
     "com.unity.test-framework": "1.1.33",
     "com.unity.testtools.codecoverage": "1.2.7",
-    "jp.andantetribe.assetsregistry": "https://github.com/AndanteTribe/AssetsRegistry.git?path=src/AssetsRegistry.Unity/Packages/jp.andantetribe.assetsregistry",
     "com.unity.modules.ai": "1.0.0",
     "com.unity.modules.androidjni": "1.0.0",
     "com.unity.modules.animation": "1.0.0",
