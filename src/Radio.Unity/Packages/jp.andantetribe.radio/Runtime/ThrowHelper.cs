@@ -13,7 +13,7 @@ namespace Radio
             {
                 return;
             }
-            throw new ArgumentOutOfRangeException(paramName, "Volume must be between 0 and 1.");
+            throw new ArgumentOutOfRangeException(paramName, "Volume must be greater than 0 and less than or equal to 1.");
         }
     }
 }
