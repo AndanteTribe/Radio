@@ -10,7 +10,7 @@ namespace Radio
     /// The actual clip loading strategy is injected via <see cref="IAudioClipLoad{T}"/> instead of being implemented
     /// through subclassing, so switching loaders (Addressables, Resources, etc.) never touches this class.
     /// </summary>
-    public class AudioPlayerCore<T> : IDisposable
+    public partial class AudioPlayerCore<T> : IDisposable
     {
         private const float DefaultVolume = 0.5f;
 
@@ -37,6 +37,10 @@ namespace Radio
 
         public AudioPlayerCore(GameObject root, IAudioClipLoad<T> audioClipLoad, int bgmChannels = 3, bool useVoice = false)
         {
+            if (bgmChannels > 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(bgmChannels) + " is larger than 0.");
+            }
             _audioClipLoad = audioClipLoad;
 
             // BGMチャンネルを用意する

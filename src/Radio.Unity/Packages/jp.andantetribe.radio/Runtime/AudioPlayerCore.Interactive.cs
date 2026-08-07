@@ -1,78 +1,66 @@
 #if ENABLE_LITMOTION
-#nullable enable
 
 using System;
 using System.Threading;
-using AndanteTribe.Unity.Extensions;
 using Cysharp.Threading.Tasks;
 using LitMotion;
 using UnityEngine;
-using UnityEngine.AddressableAssets;
 
 namespace Radio
 {
-    public partial class AudioPlayerCore
+    public partial class AudioPlayerCore<T>
     {
         public readonly TimeSpan FadeDuration = TimeSpan.FromSeconds(3.0f);
         private MotionHandle _crossFadeMotionHandle;
 
         /// <summary>
-        /// Initialize a new instance of <see cref="AudioPlayerCore"/>.
+        /// Initialize a new instance of <see cref="AudioPlayerCore{T}"/> with a custom cross-fade duration.
         /// </summary>
         /// <param name="root"></param>
+        /// <param name="audioClipLoad"></param>
         /// <param name="fadeDuration"></param>
-        /// <param name="bgmChannelCount"></param>
+        /// <param name="bgmChannels"></param>
         /// <param name="useVoice"></param>
-        /// <param name="bgmRegistry"></param>
-        public AudioPlayerCore(GameObject root, TimeSpan fadeDuration, uint bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)
-            : this(root, bgmChannelCount, useVoice, bgmRegistry)
+        public AudioPlayerCore(GameObject root, IAudioClipLoad<T> audioClipLoad, TimeSpan fadeDuration, int bgmChannels = 3, bool useVoice = false)
+            : this(root, audioClipLoad, bgmChannels, useVoice)
         {
             FadeDuration = fadeDuration;
         }
 
         /// <summary>
-        /// Asynchronously loads a BGM track and performs a cross-fade transition.
+        /// addressに用意されているBGMを読み込み、クロスフェードで再生を切り替える。
         /// </summary>
         /// <param name="address"></param>
         /// <param name="loop"></param>
         /// <param name="cancellationToken"></param>
-        public async UniTask CrossFadeBgmAsync(string address, bool loop = true, CancellationToken cancellationToken = default)
+        public async UniTask CrossFadeBgmAsync(T address, bool loop = true, CancellationToken cancellationToken = default)
         {
-            var clip = await _bgmRegistry.LoadAsync<AudioClip>(address, cancellationToken);
-            await CrossFadeBgmCore(clip, loop, cancellationToken);
+            var clip = await _audioClipLoad.LoadAsync(address, cancellationToken);
+            await CrossFadeBgmCoreAsync(address, clip, loop, cancellationToken);
         }
 
-        /// <summary>
-        /// Asynchronously loads a BGM track and performs a cross-fade transition.
-        /// </summary>
-        /// <param name="reference"></param>
-        /// <param name="loop"></param>
-        /// <param name="cancellationToken"></param>
-        public async UniTask CrossFadeBgmAsync(AssetReferenceT<AudioClip> reference, bool loop = true, CancellationToken cancellationToken = default)
-        {
-            var clip = await _bgmRegistry.LoadAsync(reference, cancellationToken);
-            await CrossFadeBgmCore(clip, loop, cancellationToken);
-        }
-
-        private async UniTask CrossFadeBgmCore(AudioClip clip, bool loop, CancellationToken cancellationToken)
+        private async UniTask CrossFadeBgmCoreAsync(T address, AudioClip clip, bool loop, CancellationToken cancellationToken)
         {
             CancelCrossFadeMotion();
 
-            // If no track is currently playing, start with a fade-in
+            // 現在再生中のBGMが無ければフェードインだけ行う
             if (_currentBgmChannelIndex.Value == -1)
             {
-                var channel = GetAvailableBgmChannel();
+                var channelIndex = GetAvailableBgmChannelIndex();
+                var channel = BgmChannels[channelIndex];
                 channel.Stop();
+                ReleaseBgmChannel(channelIndex); // 使い回すチャンネルに前のクリップが残っていれば先に解放する
+
                 channel.clip = clip;
                 channel.loop = loop;
                 channel.volume = 0.0f;
                 channel.Play();
+                _bgmChannelKeys[channelIndex] = address;
 
-                // Fade in with the same sine curve used by cross-fades.
+                // クロスフェードと同じサインカーブでフェードインする。
                 var fadeInHandle = LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
                     .Bind((self: this, channel), static (rate, args) => args.self.ApplyBgmVolume(args.channel, Mathf.Sin(Mathf.PI * 0.5f * rate)));
                 _crossFadeMotionHandle = fadeInHandle;
-                _excludeVolumeManagementChannels.Add(channel);
 
                 try
                 {
@@ -80,22 +68,26 @@ namespace Radio
                 }
                 finally
                 {
-                    _excludeVolumeManagementChannels.Remove(channel);
                     ClearCrossFadeMotionHandleIfCurrent(fadeInHandle);
                 }
 
                 return;
             }
 
-            var currentChannel = BgmChannels[_currentBgmChannelIndex.Value];
+            var currentChannelIndex = _currentBgmChannelIndex.Value;
+            var currentChannel = BgmChannels[currentChannelIndex];
             var currentChannelRate = GetBgmVolumeRate(currentChannel);
-            var nextChannel = GetAvailableBgmChannel();
+            var nextChannelIndex = GetAvailableBgmChannelIndex();
+            var nextChannel = BgmChannels[nextChannelIndex];
             nextChannel.Stop();
+            ReleaseBgmChannel(nextChannelIndex); // 使い回すチャンネルに前のクリップが残っていれば先に解放する
+
             nextChannel.clip = clip;
             nextChannel.loop = loop;
             nextChannel.volume = 0.0f;
             nextChannel.time = Mathf.Repeat(currentChannel.time, clip.length);
             nextChannel.Play();
+            _bgmChannelKeys[nextChannelIndex] = address;
 
             var crossFadeHandle = LMotion.Create(0.0f, 1.0f, (float)FadeDuration.TotalSeconds)
                 .Bind((self: this, cur: currentChannel, next: nextChannel, curRate: currentChannelRate), static (rate, args) =>
@@ -109,8 +101,6 @@ namespace Radio
                     self.ApplyBgmVolume(next, Mathf.Sin(f));
                 });
             _crossFadeMotionHandle = crossFadeHandle;
-            _excludeVolumeManagementChannels.Add(currentChannel);
-            _excludeVolumeManagementChannels.Add(nextChannel);
 
             try
             {
@@ -118,12 +108,11 @@ namespace Radio
             }
             finally
             {
-                _excludeVolumeManagementChannels.Remove(currentChannel);
-                _excludeVolumeManagementChannels.Remove(nextChannel);
                 ClearCrossFadeMotionHandleIfCurrent(crossFadeHandle);
             }
 
             currentChannel.Stop();
+            ReleaseBgmChannel(currentChannelIndex); // クロスフェードで切り替え終えた旧チャンネルのクリップを解放する
             currentChannel.clip = null;
         }
 
