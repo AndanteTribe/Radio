@@ -1,105 +1,103 @@
-#nullable enable
-
 using System;
-using System.Collections.Generic;
 using System.Threading;
-using AndanteTribe.Unity.Extensions;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
-using UnityEngine.AddressableAssets;
-using UnityEngine.ResourceManagement.AsyncOperations;
 
 namespace Radio
 {
     /// <summary>
-    /// General-purpose audio playback implementation.
+    /// Audio playback implementation that is not tied to a specific asset loading mechanism (e.g. Addressables).
+    /// The actual clip loading strategy is injected via <see cref="IAudioClipLoad{T}"/> instead of being implemented
+    /// through subclassing, so switching loaders (Addressables, Resources, etc.) never touches this class.
     /// </summary>
-    public partial class AudioPlayerCore : IDisposable
+    public class AudioPlayerCore<T> : IDisposable
     {
         private const float DefaultVolume = 0.5f;
 
-        private readonly AudioSource[] _allChannels;
-        private readonly AssetsRegistry _bgmRegistry;
-        private readonly bool _useVoice;
-        private readonly HashSet<AudioSource> _excludeVolumeManagementChannels = new();
-        private readonly AsyncReactiveProperty<int> _currentBgmChannelIndex = new(-1);
+        private readonly IAudioClipLoad<T> _audioClipLoad;
 
-        private ReadOnlySpan<AudioSource> BgmChannels => _allChannels.AsSpan(_useVoice ? 2 : 1);
-        private AudioSource SeChannel => _allChannels[0];
-        private AudioSource VoiceChannel => _useVoice ? _allChannels[1] : throw new InvalidOperationException("Voice channel is not enabled.");
+        private readonly AudioSource[] _allBGMChannels;
+        private readonly T[] _bgmChannelKeys;
+        private AudioSource[] BgmChannels => _allBGMChannels;
+
+        private readonly AudioSource _seChannel;
+        private AudioSource SeChannel => _seChannel;
+
+        private readonly AudioSource _voiceChannel;
+        private AudioSource VoiceChannel => _voiceChannel != null
+            ? _voiceChannel
+            : throw new InvalidOperationException("Voice channel is not enabled.");
 
         private float _masterVolume = DefaultVolume;
         private float _bgmVolume = DefaultVolume;
         private float _seVolume = DefaultVolume;
         private float _voiceVolume = DefaultVolume;
 
-        /// <summary>
-        /// Initialize a new instance of <see cref="AudioPlayerCore"/>.
-        /// </summary>
-        /// <param name="root"></param>
-        /// <param name="bgmChannelCount"></param>
-        /// <param name="useVoice"></param>
-        /// <param name="bgmRegistry"></param>
-        public AudioPlayerCore(GameObject root, uint bgmChannelCount = 3, bool useVoice = false, AssetsRegistry? bgmRegistry = null)
-        {
-            _allChannels = root.GetComponents<AudioSource>();
-            var existingChannels = _allChannels.AsSpan();
+        private readonly AsyncReactiveProperty<int> _currentBgmChannelIndex = new(-1);
 
-            var allChannelCount = bgmChannelCount + 1 + (useVoice ? 1 : 0); // BGM + SE + (Voice)
-            if (existingChannels.Length < allChannelCount)
+        public AudioPlayerCore(GameObject root, IAudioClipLoad<T> audioClipLoad, int bgmChannels = 3, bool useVoice = false)
+        {
+            _audioClipLoad = audioClipLoad;
+
+            // BGMチャンネルを用意する
+            _allBGMChannels = new AudioSource[bgmChannels];
+            _bgmChannelKeys = new T[bgmChannels];
+            for (var i = 0; i < bgmChannels; i++)
             {
-                var channels = new AudioSource[allChannelCount];
-                existingChannels.CopyTo(channels);
-                for (var i = 0; i < channels.Length; i++)
-                {
-                    var channel = channels[i];
-                    if (channel == null)
-                    {
-                        channel = channels[i] = root.AddComponent<AudioSource>();
-                    }
-                    channel.loop = false;
-                    channel.playOnAwake = false;
-                    channel.volume = DefaultVolume;
-                }
-                _allChannels = channels;
+                var source = root.AddComponent<AudioSource>();
+                source.playOnAwake = false;
+                source.loop = false;
+                source.volume = DefaultVolume;
+                _allBGMChannels[i] = source;
             }
 
-            _bgmRegistry = bgmRegistry ?? new AssetsRegistry();
-            _useVoice = useVoice;
+            // SE
+            _seChannel = root.AddComponent<AudioSource>();
+            _seChannel.playOnAwake = false;
+            _seChannel.loop = false;
+            _seChannel.volume = DefaultVolume;
+
+            // Voice
+            if (useVoice)
+            {
+                _voiceChannel = root.AddComponent<AudioSource>();
+                _voiceChannel.playOnAwake = false;
+                _voiceChannel.loop = false;
+                _voiceChannel.volume = DefaultVolume;
+            }
         }
 
         /// <summary>
-        /// Asynchronously loads and plays a BGM track.
+        /// addressに用意されているBGMを再生する。再生中のBGMがあれば停止する。
         /// </summary>
         /// <param name="address"></param>
         /// <param name="loop"></param>
         /// <param name="cancellationToken"></param>
-        public async UniTask PlayBgmAsync(string address, bool loop = true, CancellationToken cancellationToken = default)
+        public async UniTask PlayBgmAsync(T address, bool loop = true, CancellationToken cancellationToken = default)
         {
-            var clip = await _bgmRegistry.LoadAsync<AudioClip>(address, cancellationToken);
-            await PlayBgmCoreAsync(clip, loop, cancellationToken);
+            var clip = await _audioClipLoad.LoadAsync(address, cancellationToken);
+            await PlayBgmCoreAsync(address, clip, loop, cancellationToken);
         }
 
         /// <summary>
-        /// Asynchronously loads and plays a BGM track.
+        /// 再生本編
         /// </summary>
-        /// <param name="reference"></param>
+        /// <param name="address"></param>
+        /// <param name="clip"></param>
         /// <param name="loop"></param>
         /// <param name="cancellationToken"></param>
-        public async UniTask PlayBgmAsync(AssetReferenceT<AudioClip> reference, bool loop = true, CancellationToken cancellationToken = default)
+        private async UniTask PlayBgmCoreAsync(T address, AudioClip clip, bool loop, CancellationToken cancellationToken)
         {
-            var clip = await _bgmRegistry.LoadAsync(reference, cancellationToken);
-            await PlayBgmCoreAsync(clip, loop, cancellationToken);
-        }
-
-        private async UniTask PlayBgmCoreAsync(AudioClip clip, bool loop, CancellationToken cancellationToken)
-        {
-            var channel = GetAvailableBgmChannel();
+            var channelIndex = GetAvailableBgmChannelIndex();
+            var channel = BgmChannels[channelIndex];
             channel.Stop();
+            ReleaseBgmChannel(channelIndex); // 使い回すチャンネルに前のクリップが残っていれば先に解放する
+
             channel.clip = clip;
             channel.loop = loop;
             channel.volume = _bgmVolume * _masterVolume;
             channel.Play();
+            _bgmChannelKeys[channelIndex] = address;
 
             try
             {
@@ -125,11 +123,14 @@ namespace Radio
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 channel.Stop();
+                ReleaseBgmChannel(channelIndex);
                 channel.clip = null;
                 channel.loop = false;
                 throw;
             }
 
+
+            // 複数回BGMが実行された時のために、BGMのチャンネルを回し続け、全て回しきったら最後に再生したチャンネルを停止.
             async UniTask<AsyncUnit> WaitUntilBgmChannelCyclesAsync(CancellationToken token)
             {
                 for (var i = 0; i < BgmChannels.Length; i++)
@@ -145,94 +146,69 @@ namespace Radio
         }
 
         /// <summary>
-        /// Stops all currently playing BGM tracks.
+        /// BGMを止める。
         /// </summary>
         public void StopAllBgm()
         {
-            foreach (var channel in BgmChannels)
+            for (var i = 0; i < BgmChannels.Length; i++)
             {
+                var channel = BgmChannels[i];
                 channel.Stop();
+                ReleaseBgmChannel(i);
                 channel.clip = null;
                 channel.loop = false;
             }
-            _bgmRegistry.Clear();
+
             _currentBgmChannelIndex.Value = -1;
         }
 
         /// <summary>
-        /// Asynchronously loads and plays a sound effect.
+        /// SEを流す
         /// </summary>
         /// <param name="address"></param>
         /// <param name="cancellationToken"></param>
-        public UniTask PlaySeAsync(string address, CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var channel = SeChannel;
-            var handle = Addressables.LoadAssetAsync<AudioClip>(address);
-            return PlayNonBgmCoreAsync(handle, channel, cancellationToken);
-        }
+        public UniTask PlaySeAsync(T address, CancellationToken cancellationToken = default) =>
+            PlayNonBgmCoreAsync(SeChannel, address, cancellationToken);
 
         /// <summary>
-        /// Asynchronously loads and plays a sound effect.
-        /// </summary>
-        /// <param name="reference"></param>
-        /// <param name="cancellationToken"></param>
-        public UniTask PlaySeAsync(AssetReferenceT<AudioClip> reference, CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var channel = SeChannel;
-            var handle = reference.LoadAssetAsync();
-            return PlayNonBgmCoreAsync(handle, channel, cancellationToken);
-        }
-
-        /// <summary>
-        /// Asynchronously loads and plays a voice clip.
+        /// 音声を流す. 音声チャンネルが有効化されていない場合は例外を投げる
         /// </summary>
         /// <param name="address"></param>
         /// <param name="cancellationToken"></param>
-        public UniTask PlayVoiceAsync(string address, CancellationToken cancellationToken = default)
+        /// <exception cref="InvalidOperationException"></exception>
+        public UniTask PlayVoiceAsync(T address, CancellationToken cancellationToken = default)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var channel = VoiceChannel;
-            var handle = Addressables.LoadAssetAsync<AudioClip>(address);
-            return PlayNonBgmCoreAsync(handle, channel, cancellationToken);
+            if (_voiceChannel == null)
+            {
+                throw new InvalidOperationException("Voice channel is not enabled.");
+            }
+
+            return PlayNonBgmCoreAsync(_voiceChannel, address, cancellationToken);
         }
 
         /// <summary>
-        /// Asynchronously loads and plays a voice clip.
+        /// SE・Voiceの再生本編。指定channelでaddressのクリップをワンショット再生する。
         /// </summary>
-        /// <param name="reference"></param>
+        /// <param name="channel"></param>
+        /// <param name="address"></param>
         /// <param name="cancellationToken"></param>
-        public UniTask PlayVoiceAsync(AssetReferenceT<AudioClip> reference, CancellationToken cancellationToken = default)
+        private async UniTask PlayNonBgmCoreAsync(AudioSource channel, T address, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var channel = VoiceChannel;
-            var handle = reference.LoadAssetAsync();
-            return PlayNonBgmCoreAsync(handle, channel, cancellationToken);
-        }
-
-        private async UniTask PlayNonBgmCoreAsync(AsyncOperationHandle<AudioClip> handle, AudioSource channel, CancellationToken cancellationToken)
-        {
+            var clip = await _audioClipLoad.LoadAsync(address, cancellationToken);
             try
             {
-                var result = await handle.ToUniTask(cancellationToken: cancellationToken, autoReleaseWhenCanceled: true);
-                if (result == null)
+                if (clip == null)
                 {
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-                    Debug.LogError("Failed to load SE: " + handle.DebugName);
-#endif
                     return;
                 }
 
-                channel.PlayOneShot(result);
-                await UniTask.Delay(TimeSpan.FromSeconds(result.length), cancellationToken: cancellationToken);
+                channel.PlayOneShot(clip);
+                await UniTask.Delay(TimeSpan.FromSeconds(clip.length), cancellationToken: cancellationToken);
             }
             finally
             {
-                if (handle.IsValid())
-                {
-                    Addressables.Release(handle);
-                }
+                _audioClipLoad.Release(address);
             }
         }
 
@@ -244,16 +220,13 @@ namespace Radio
         {
             _masterVolume = Mathf.Clamp01(volume);
             SeChannel.volume = _seVolume * _masterVolume;
-            if (_useVoice)
+            if (_voiceChannel != null)
             {
-                VoiceChannel.volume = _voiceVolume * _masterVolume;
+                _voiceChannel.volume = _voiceVolume * _masterVolume;
             }
             foreach (var channel in BgmChannels)
             {
-                if (!_excludeVolumeManagementChannels.Contains(channel))
-                {
-                    channel.volume = _bgmVolume * _masterVolume;
-                }
+                channel.volume = _bgmVolume * _masterVolume;
             }
         }
 
@@ -266,10 +239,7 @@ namespace Radio
             _bgmVolume = Mathf.Clamp01(volume);
             foreach (var channel in BgmChannels)
             {
-                if (!_excludeVolumeManagementChannels.Contains(channel))
-                {
-                    channel.volume = _bgmVolume * _masterVolume;
-                }
+                channel.volume = _bgmVolume * _masterVolume;
             }
         }
 
@@ -279,9 +249,8 @@ namespace Radio
         /// <param name="volume"></param>
         public void SetSeVolume(float volume)
         {
-            var channel = SeChannel;
             _seVolume = Mathf.Clamp01(volume);
-            channel.volume = _seVolume * _masterVolume;
+            SeChannel.volume = _seVolume * _masterVolume;
         }
 
         /// <summary>
@@ -290,18 +259,47 @@ namespace Radio
         /// <param name="volume"></param>
         public void SetVoiceVolume(float volume)
         {
-            var channel = VoiceChannel;
             _voiceVolume = Mathf.Clamp01(volume);
-            channel.volume = _voiceVolume * _masterVolume;
+            VoiceChannel.volume = _voiceVolume * _masterVolume;
+        }
+
+        /// <summary>
+        /// 全チャンネルを停止してclip参照を外す。BGM/SE/Voiceいずれも再生の区切り(再生完了・チャンネル差し替え・停止)ごとに
+        /// <see cref="IAudioClipLoad{T}.Release"/>を呼んでいるため、ここでの<see cref="IAudioClipLoad{T}.Dispose"/>は
+        /// 再生タスクが完了しないまま破棄された場合などに備えたセーフティネットの位置づけ。
+        /// </summary>
+        public virtual void BgmClear()
+        {
+            StopAllBgm();
+
+            SeChannel.Stop();
+            SeChannel.clip = null;
+
+            if (_voiceChannel != null)
+            {
+                _voiceChannel.Stop();
+                _voiceChannel.clip = null;
+            }
+
+            _audioClipLoad?.Dispose();
         }
 
         /// <inheritdoc />
-        public void Dispose()
-        {
-            _bgmRegistry.Dispose();
-        }
+        public void Dispose() => BgmClear();
 
-        private AudioSource GetAvailableBgmChannel() =>
-            BgmChannels[_currentBgmChannelIndex.Value = (_currentBgmChannelIndex.Value + 1) % BgmChannels.Length];
+        private int GetAvailableBgmChannelIndex() =>
+            _currentBgmChannelIndex.Value = (_currentBgmChannelIndex.Value + 1) % BgmChannels.Length;
+
+        /// <summary>
+        /// 指定したBGMチャンネルに現在ロードされているクリップがあれば、ローダーに解放を依頼する。
+        /// </summary>
+        /// <param name="channelIndex"></param>
+        private void ReleaseBgmChannel(int channelIndex)
+        {
+            if (BgmChannels[channelIndex].clip != null)
+            {
+                _audioClipLoad.Release(_bgmChannelKeys[channelIndex]);
+            }
+        }
     }
 }
