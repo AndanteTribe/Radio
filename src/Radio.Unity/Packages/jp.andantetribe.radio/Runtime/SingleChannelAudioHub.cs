@@ -1,6 +1,7 @@
-﻿#nullable enable
+#nullable enable
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Cysharp.Threading.Tasks;
@@ -23,6 +24,7 @@ namespace Radio
         /// <inheritdoc />
         public ReadOnlySpan<AudioSource> AudioSources
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
 #if NET7_0_OR_GREATER
             get => MemoryMarshal.CreateReadOnlySpan(in _source, 1);
 #else
@@ -53,9 +55,11 @@ namespace Radio
         }
 
         /// <inheritdoc />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void StopAll() => _source.Stop();
 
         /// <inheritdoc />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void ApplyVolume(float value)
         {
             ThrowHelper.ThrowIfVolumeOutOfRange(value);

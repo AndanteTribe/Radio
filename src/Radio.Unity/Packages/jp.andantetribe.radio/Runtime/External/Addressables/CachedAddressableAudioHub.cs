@@ -1,8 +1,9 @@
-﻿#if ENABLE_ADDRESSABLES
+#if ENABLE_ADDRESSABLES
 #nullable enable
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
@@ -20,16 +21,17 @@ namespace Radio
         private readonly Dictionary<AsyncOperationHandle, int> _handleReferenceCounts = new(AsyncOperationHandleEqualityComparer.Default);
 
         /// <inheritdoc cref="IAudioHub{T}.AudioSources" />
-        public ReadOnlySpan<AudioSource> AudioSources => _original.AudioSources;
+        public ReadOnlySpan<AudioSource> AudioSources
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _original.AudioSources;
+        }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="CachedAddressableAudioHub"/> class.
         /// </summary>
         /// <param name="original">The clip hub that performs playback after loading.</param>
-        public CachedAddressableAudioHub(IAudioHub<AudioClip> original)
-        {
-            _original = original;
-        }
+        public CachedAddressableAudioHub(IAudioHub<AudioClip> original) => _original = original;
 
         /// <inheritdoc cref="IAudioHub{T}.PlayAsync(T, CancellationToken)" />
         public UniTask PlayAsync(string key, CancellationToken cancellationToken)
@@ -47,7 +49,7 @@ namespace Radio
 
         private async UniTask PlayCoreAsync(AsyncOperationHandle<AudioClip> handle, CancellationToken cancellationToken)
         {
-            var result = default(AudioClip);
+            AudioClip? result;
             try
             {
                 result = await handle.ToUniTask(cancellationToken: cancellationToken);
@@ -77,9 +79,11 @@ namespace Radio
         }
 
         /// <inheritdoc cref="IAudioHub{T}.StopAll" />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void StopAll() => _original.StopAll();
 
         /// <inheritdoc cref="IAudioHub{T}.ApplyVolume(float)" />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void ApplyVolume(float value) => _original.ApplyVolume(value);
 
         /// <inheritdoc cref="IDisposable.Dispose" />

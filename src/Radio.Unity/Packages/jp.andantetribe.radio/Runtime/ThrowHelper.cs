@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 
 using System;
 using System.Diagnostics.CodeAnalysis;
@@ -16,7 +16,10 @@ namespace Radio
             {
                 return;
             }
-            throw new ArgumentOutOfRangeException(paramName, "Volume must be greater than 0 and less than or equal to 1.");
+            ThrowArgumentOutOfRangeException(paramName);
+
+            static void ThrowArgumentOutOfRangeException(string paramName)
+                => throw new ArgumentOutOfRangeException(paramName, "Volume must be greater than 0 and less than or equal to 1.");
         }
     }
 }

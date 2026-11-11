@@ -1,4 +1,4 @@
-﻿#if ENABLE_ADDRESSABLES
+#if ENABLE_ADDRESSABLES
 #nullable enable
 
 using System.Collections.Generic;

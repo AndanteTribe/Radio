@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 
 using System;
 using System.Runtime.CompilerServices;
@@ -19,7 +19,11 @@ namespace Radio
         private bool _loop;
 
         /// <inheritdoc />
-        public ReadOnlySpan<AudioSource> AudioSources => _channels.Span;
+        public ReadOnlySpan<AudioSource> AudioSources
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _channels.Span;
+        }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="MultiChannelsAudioHub"/> class.
