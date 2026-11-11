@@ -1,4 +1,4 @@
-﻿#if ENABLE_LITMOTION
+#if ENABLE_LITMOTION
 #nullable enable
 
 using System;
@@ -14,7 +14,7 @@ namespace Radio
     /// <summary>
     /// Plays clips with fade-in, cross-fade, and playback-position synchronization across multiple channels.
     /// </summary>
-    public class InteractiveAudioHub : ILoopableAudioHub<AudioClip>,  IAudioHub<AudioClip>
+    public class InteractiveAudioHub : ILoopableAudioHub<AudioClip>, IAudioHub<AudioClip>
     {
         /// <summary>
         /// The duration of each fade-in or cross-fade transition.
@@ -29,7 +29,11 @@ namespace Radio
         private bool _loop;
 
         /// <inheritdoc />
-        public ReadOnlySpan<AudioSource> AudioSources => _channels.Span;
+        public ReadOnlySpan<AudioSource> AudioSources
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _channels.Span;
+        }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="InteractiveAudioHub"/> class.

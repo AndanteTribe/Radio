@@ -1,7 +1,8 @@
-﻿#if ENABLE_ADDRESSABLES
+#if ENABLE_ADDRESSABLES
 #nullable enable
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
@@ -18,16 +19,17 @@ namespace Radio
         private readonly IAudioHub<AudioClip> _original;
 
         /// <inheritdoc cref="IAudioHub{T}.AudioSources" />
-        public ReadOnlySpan<AudioSource> AudioSources => _original.AudioSources;
+        public ReadOnlySpan<AudioSource> AudioSources
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _original.AudioSources;
+        }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="AddressableAudioHub"/> class.
         /// </summary>
         /// <param name="original">The clip hub that performs playback after loading.</param>
-        public AddressableAudioHub(IAudioHub<AudioClip> original)
-        {
-            _original = original;
-        }
+        public AddressableAudioHub(IAudioHub<AudioClip> original) => _original = original;
 
         /// <inheritdoc cref="IAudioHub{T}.PlayAsync(T, CancellationToken)" />
         public UniTask PlayAsync(string key, CancellationToken cancellationToken)
@@ -63,9 +65,11 @@ namespace Radio
         }
 
         /// <inheritdoc cref="IAudioHub{T}.StopAll" />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void StopAll() => _original.StopAll();
 
         /// <inheritdoc cref="IAudioHub{T}.ApplyVolume(float)" />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void ApplyVolume(float value) => _original.ApplyVolume(value);
     }
 }

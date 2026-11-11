@@ -181,7 +181,7 @@ namespace Radio.Tests
             var thirdClip = CreateClip("Interrupted C", 0.2f);
 
             var firstTask = hub.PlayAsync(firstClip, CancellationToken.None);
-            await WaitUntilAsync(() => channels[0].volume > 0.15f && channels[0].volume < 0.75f);
+            await WaitUntilAsync(() => channels[0].volume is > 0.15f and < 0.75f);
 
             var secondTask = hub.PlayAsync(secondClip, CancellationToken.None);
             await WaitUntilAsync(() =>

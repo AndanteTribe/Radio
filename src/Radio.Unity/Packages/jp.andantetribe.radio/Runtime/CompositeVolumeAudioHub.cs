@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace Radio
 {
@@ -17,12 +18,21 @@ namespace Radio
         /// <summary>
         /// Gets the master volume multiplied into every group volume.
         /// </summary>
-        public float MasterVolume { get; private set; }
+        public float MasterVolume
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get;
+            private set;
+        }
 
         /// <summary>
         /// Gets the number of registered volume groups.
         /// </summary>
-        public int Count => _entries.Count;
+        public int Count
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _entries.Count;
+        }
 
         internal CompositeVolumeAudioHub(Dictionary<TId, Entry> entries, float masterVolume)
         {
@@ -114,7 +124,7 @@ namespace Radio
                 Volume = volume;
             }
 
-            public void ApplyVolume(float masterVolume)
+            public readonly void ApplyVolume(float masterVolume)
             {
                 var volume = masterVolume * Volume;
                 foreach (var hub in Hubs)
@@ -174,7 +184,7 @@ namespace Radio
             /// <paramref name="value"/> is not greater than <c>0</c> and less than or equal to <c>1</c>.
             /// </exception>
             /// <exception cref="KeyNotFoundException"><paramref name="id"/> is not registered.</exception>
-            public void SetVolume(TId id, float value)
+            public readonly void SetVolume(TId id, float value)
             {
                 ThrowHelper.ThrowIfVolumeOutOfRange(value);
                 if (_entries == null || !_entries.TryGetValue(id, out var entry))
@@ -193,6 +203,7 @@ namespace Radio
             /// <exception cref="ArgumentOutOfRangeException">
             /// <paramref name="value"/> is not greater than <c>0</c> and less than or equal to <c>1</c>.
             /// </exception>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void SetMasterVolume(float value)
             {
                 ThrowHelper.ThrowIfVolumeOutOfRange(value);

@@ -22,10 +22,7 @@ namespace Radio.Tests
 
         public ReadOnlySpan<AudioSource> AudioSources => _audioSources;
 
-        public RecordingAudioHub(params AudioSource[] audioSources)
-        {
-            _audioSources = audioSources;
-        }
+        public RecordingAudioHub(params AudioSource[] audioSources) => _audioSources = audioSources;
 
         public UniTask PlayAsync(T key, CancellationToken cancellationToken)
         {
